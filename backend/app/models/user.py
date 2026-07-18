@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
+
+from app.models.timestamps import utc_timestamp_field
 
 
 class User(SQLModel, table=True):
@@ -13,8 +14,4 @@ class User(SQLModel, table=True):
     password_hash: str
     display_name: str | None = None
     role: str = Field(default="member", nullable=False)
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        sa_type=DateTime(timezone=True),
-    )
+    created_at: datetime = utc_timestamp_field()

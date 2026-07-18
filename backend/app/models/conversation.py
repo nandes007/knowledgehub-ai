@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import DateTime
 from sqlmodel import Field, Index, SQLModel
+
+from app.models.timestamps import utc_timestamp_field
 
 
 class Conversation(SQLModel, table=True):
@@ -12,13 +13,5 @@ class Conversation(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, ondelete="CASCADE")
     title: str = Field(default="New chat", nullable=False)
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        sa_type=DateTime(timezone=True),
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        sa_type=DateTime(timezone=True),
-    )
+    created_at: datetime = utc_timestamp_field()
+    updated_at: datetime = utc_timestamp_field()

@@ -12,9 +12,14 @@ class _FakeEmbeddingsAPI:
         return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2]) for _ in input])
 
 
+def _fake_stream_chunk(content: str | None):
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))])
+
+
 class _FakeChatCompletionsAPI:
-    def create(self, model: str, messages: list[dict]):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="42"))])
+    def create(self, model: str, messages: list[dict], stream: bool = False):
+        assert stream is True
+        return iter([_fake_stream_chunk("4"), _fake_stream_chunk("2"), _fake_stream_chunk(None)])
 
 
 class _FakeOpenAIClient:
@@ -31,10 +36,12 @@ def test_embed_texts_parses_openai_response():
     assert result == [[0.1, 0.2], [0.1, 0.2]]
 
 
-def test_generate_answer_parses_openai_response():
+def test_generate_answer_stream_yields_token_deltas_and_skips_empty_chunks():
     provider = OpenAIProvider(client=_FakeOpenAIClient())
 
-    assert provider.generate_answer("What is the answer?") == "42"
+    tokens = list(provider.generate_answer_stream("What is the answer?"))
+
+    assert tokens == ["4", "2"]
 
 
 def test_get_llm_provider_defaults_to_openai(monkeypatch):

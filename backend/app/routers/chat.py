@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends
+import json
+from collections.abc import Iterator
 
-from app.schemas.chat import ChatRequest, ChatResponse
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+
+from app.schemas.chat import ChatRequest
 from app.services.llm import LLMProvider, get_llm_provider
-from app.services.rag import answer_question
+from app.services.rag import stream_answer
 from ingestion.index import VectorStore, get_vector_store
 
 router = APIRouter()
@@ -11,16 +15,32 @@ router = APIRouter()
 _HARDCODED_USER_ID = "seed-user"
 
 
-@router.post("/chat", response_model=ChatResponse)
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _event_stream(tokens: Iterator[str], sources: list[dict]) -> Iterator[str]:
+    try:
+        for token in tokens:
+            yield _sse("token", {"text": token})
+    except Exception as exc:
+        # Last-resort boundary: headers are already sent, so a mid-stream LLM
+        # failure has to surface as an SSE event rather than an HTTP error.
+        yield _sse("error", {"message": str(exc)})
+        return
+    yield _sse("done", {"sources": sources})
+
+
+@router.post("/chat")
 def chat(
     request: ChatRequest,
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
-) -> ChatResponse:
-    answer, sources = answer_question(
+) -> StreamingResponse:
+    tokens, sources = stream_answer(
         request.message,
         user_id=_HARDCODED_USER_ID,
         llm=llm,
         vector_store=vector_store,
     )
-    return ChatResponse(answer=answer, sources=sources)
+    return StreamingResponse(_event_stream(tokens, sources), media_type="text/event-stream")

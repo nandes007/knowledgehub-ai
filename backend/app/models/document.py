@@ -1,8 +1,10 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime
+from sqlalchemy import CheckConstraint
 from sqlmodel import Field, Index, SQLModel
+
+from app.models.timestamps import utc_timestamp_field
 
 
 class Document(SQLModel, table=True):
@@ -24,13 +26,5 @@ class Document(SQLModel, table=True):
     doc_type: str = Field(default="general", nullable=False)
     department: str | None = None
     chunk_count: int | None = None
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        sa_type=DateTime(timezone=True),
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        sa_type=DateTime(timezone=True),
-    )
+    created_at: datetime = utc_timestamp_field()
+    updated_at: datetime = utc_timestamp_field()

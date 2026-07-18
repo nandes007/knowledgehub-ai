@@ -24,12 +24,15 @@ event: token
 data: {"text": "partial answer chunk"}
 
 event: done
-data: {"sources": [{"document_id": "...", "filename": "...", "chunk_preview": "..."}], "message_id": "...", "conversation_id": "..."}
+data: {"sources": [{"document_id": "...", "filename": "...", "chunk_preview": "..."}]}
 ```
 
 - `token` events repeat as the model generates output.
-- Exactly one `done` event ends the stream, carrying citations and metadata.
-- On error mid-stream: `event: error` with `data: {"message": "..."}`, then the connection closes.
+- Exactly one `done` event ends a successful stream, carrying citations.
+  `message_id`/`conversation_id` are added to this event in Task 04 once
+  conversations are persisted.
+- On error mid-stream: `event: error` with `data: {"message": "..."}`, then the
+  connection closes without a `done` event.
 
 ## Conversations
 

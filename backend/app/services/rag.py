@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 from app.services.llm import LLMProvider
 from ingestion.index import VectorStore
 
@@ -11,19 +13,18 @@ _SYSTEM_PROMPT = (
 )
 
 
-def answer_question(
+def stream_answer(
     question: str,
     *,
     user_id: str,
     llm: LLMProvider,
     vector_store: VectorStore,
-) -> tuple[str, list[dict]]:
+) -> tuple[Iterator[str], list[dict]]:
     query_embedding = llm.embed_texts([question])[0]
     matches = vector_store.query(query_embedding, top_k=_TOP_K, where={"user_id": user_id})
 
     context = "\n\n---\n\n".join(m["text"] for m in matches)
     prompt = f"{_SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"
-    answer = llm.generate_answer(prompt)
 
     sources = [
         {
@@ -33,4 +34,4 @@ def answer_question(
         }
         for m in matches
     ]
-    return answer, sources
+    return llm.generate_answer_stream(prompt), sources

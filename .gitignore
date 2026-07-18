@@ -1,0 +1,24 @@
+# env
+.env
+.env.local
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# node
+node_modules/
+.next/
+out/
+
+# data volumes (local dev)
+backend/.chroma/
+backend/uploads/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/

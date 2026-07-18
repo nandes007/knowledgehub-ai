@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app import models  # noqa: F401 - registers tables on SQLModel.metadata
 from app.db import create_db_and_tables
+from app.routers.chat import router as chat_router
 
 
 @asynccontextmanager
@@ -19,6 +20,8 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.include_router(chat_router)
 
     return app
 

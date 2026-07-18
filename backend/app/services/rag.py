@@ -19,12 +19,18 @@ def stream_answer(
     user_id: str,
     llm: LLMProvider,
     vector_store: VectorStore,
+    history: list[dict[str, str]] | None = None,
 ) -> tuple[Iterator[str], list[dict]]:
     query_embedding = llm.embed_texts([question])[0]
     matches = vector_store.query(query_embedding, top_k=_TOP_K, where={"user_id": user_id})
 
     context = "\n\n---\n\n".join(m["text"] for m in matches)
-    prompt = f"{_SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"
+    history_block = ""
+    if history:
+        history_text = "\n".join(f"{turn['role']}: {turn['content']}" for turn in history)
+        history_block = f"\n\nConversation so far:\n{history_text}"
+
+    prompt = f"{_SYSTEM_PROMPT}\n\nContext:\n{context}{history_block}\n\nQuestion: {question}\nAnswer:"
 
     sources = [
         {

@@ -181,3 +181,103 @@ def test_uploading_a_second_document_does_not_touch_the_first_documents_vectors(
     count_after = len([r for r in after if r["document_id"] == str(first_id)])
     assert count_after == count_before
     assert count_after >= 1
+
+
+def test_list_documents_returns_status_chunk_count_and_timestamps(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    _override_llm(_FakeLLM())
+    _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
+    try:
+        client.post(
+            "/documents",
+            files={"file": ("vacation.md", b"# Vacation Policy\n\nEmployees get 20 days.", "text/markdown")},
+        )
+        response = client.get("/documents")
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 200
+    documents = response.json()
+    assert len(documents) == 1
+    doc = documents[0]
+    assert doc["filename"] == "vacation.md"
+    assert doc["status"] == "ready"
+    assert doc["chunk_count"] == 1
+    assert doc["error_message"] is None
+    assert "created_at" in doc
+
+
+def test_list_documents_returns_newest_first(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    _override_llm(_FakeLLM())
+    _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
+    try:
+        first = client.post("/documents", files={"file": ("a.md", b"# A\n\ncontent a", "text/markdown")})
+        second = client.post("/documents", files={"file": ("b.md", b"# B\n\ncontent b", "text/markdown")})
+        response = client.get("/documents")
+    finally:
+        _clear_overrides()
+
+    ids = [d["id"] for d in response.json()]
+    assert ids[0] == second.json()["id"]
+    assert ids[1] == first.json()["id"]
+
+
+def test_delete_document_removes_file_db_row_and_vectors(client, db_engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    store = VectorStore(persist_dir=str(tmp_path / "chroma"))
+    _override_llm(_FakeLLM())
+    _override_store(store)
+    try:
+        upload = client.post(
+            "/documents",
+            files={"file": ("vacation.md", b"# Vacation Policy\n\nEmployees get 20 days.", "text/markdown")},
+        )
+        document_id = upload.json()["id"]
+        with Session(db_engine) as session:
+            saved_path = Path(session.get(Document, uuid.UUID(document_id)).file_path)
+        assert saved_path.exists()
+
+        response = client.delete(f"/documents/{document_id}")
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 204
+    assert not saved_path.exists()
+    with Session(db_engine) as session:
+        assert session.get(Document, uuid.UUID(document_id)) is None
+    results = store.query([1.0, 0.0], top_k=10)
+    assert all(r["document_id"] != document_id for r in results)
+
+
+def test_delete_unknown_document_returns_404(client):
+    response = client.delete(f"/documents/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+
+
+def test_delete_document_does_not_touch_other_documents_vectors(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    store = VectorStore(persist_dir=str(tmp_path / "chroma"))
+    _override_llm(_FakeLLM())
+    _override_store(store)
+    try:
+        keep = client.post(
+            "/documents",
+            files={"file": ("keep.md", b"# Keep\n\ncontent to keep", "text/markdown")},
+        )
+        keep_id = keep.json()["id"]
+        remove = client.post(
+            "/documents",
+            files={"file": ("remove.md", b"# Remove\n\ncontent to remove", "text/markdown")},
+        )
+        remove_id = remove.json()["id"]
+
+        response = client.delete(f"/documents/{remove_id}")
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 204
+    results = store.query([1.0, 0.0], top_k=10)
+    assert any(r["document_id"] == keep_id for r in results)
+    assert all(r["document_id"] != remove_id for r in results)

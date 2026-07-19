@@ -51,6 +51,9 @@ class VectorStore:
         )
         return len(chunks)
 
+    def delete_by_document(self, document_id: str) -> None:
+        self._collection.delete(where={"document_id": document_id})
+
     def query(self, query_embedding: list[float], *, top_k: int = 5, where: dict | None = None) -> list[dict]:
         results = self._collection.query(query_embeddings=[query_embedding], n_results=top_k, where=where)
         matches = []

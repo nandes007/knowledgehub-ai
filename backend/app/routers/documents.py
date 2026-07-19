@@ -4,12 +4,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy import Engine
+from sqlmodel import select
 
 from app.config import settings
 from app.db import get_engine
 from app.deps import SessionDep
 from app.models.document import Document
-from app.schemas.document import DocumentRead
+from app.schemas.document import DocumentRead, DocumentSummary
 from app.seed import SEED_USER_ID
 from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
@@ -61,3 +62,29 @@ async def upload_document(
     )
 
     return document
+
+
+@router.get("/documents", response_model=list[DocumentSummary])
+def list_documents(session: SessionDep) -> list[Document]:
+    statement = (
+        select(Document)
+        .where(Document.user_id == SEED_USER_ID)
+        .order_by(Document.created_at.desc())
+    )
+    return list(session.exec(statement))
+
+
+@router.delete("/documents/{document_id}", status_code=204)
+def delete_document(
+    document_id: uuid.UUID,
+    session: SessionDep,
+    vector_store: VectorStore = Depends(get_vector_store),
+) -> None:
+    document = session.get(Document, document_id)
+    if document is None or document.user_id != SEED_USER_ID:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    Path(document.file_path).unlink(missing_ok=True)
+    vector_store.delete_by_document(str(document.id))
+    session.delete(document)
+    session.commit()

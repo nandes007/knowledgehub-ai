@@ -6,12 +6,12 @@
 **Description:** `GET /documents` (with statuses) and `DELETE /documents/{id}` which removes the file, the DB row, and its vectors via `where={"document_id": ...}`.
 
 **Acceptance criteria:**
-- [ ] `GET /documents` returns list with status, chunk_count, timestamps
-- [ ] Delete removes file from disk + DB row + all its vectors
-- [ ] Never triggers a full-collection rebuild
+- [x] `GET /documents` returns list with status, chunk_count, timestamps
+- [x] Delete removes file from disk + DB row + all its vectors
+- [x] Never triggers a full-collection rebuild
 
 **Verification:**
-- [ ] After delete, questions about that doc no longer retrieve it
+- [x] After delete, questions about that doc no longer retrieve it
 
 **Dependencies:** Task 12
 

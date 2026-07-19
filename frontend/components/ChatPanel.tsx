@@ -64,8 +64,8 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-6 pt-16 md:px-6 md:pt-6">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}

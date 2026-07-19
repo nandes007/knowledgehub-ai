@@ -6,12 +6,12 @@
 **Description:** Consume SSE in `lib/sse.ts`; render tokens live with auto-scroll, a "thinking" indicator, and markdown rendering via `react-markdown`.
 
 **Acceptance criteria:**
-- [ ] `lib/sse.ts` parses token events and the final `done` event
-- [ ] Tokens render live with auto-scroll
-- [ ] "Thinking" indicator before first token; markdown rendered in answers
+- [x] `lib/sse.ts` parses token events and the final `done` event
+- [x] Tokens render live with auto-scroll
+- [x] "Thinking" indicator before first token; markdown rendered in answers
 
 **Verification:**
-- [ ] Answers visibly stream token-by-token in the browser
+- [x] Answers visibly stream token-by-token in the browser
 
 **Dependencies:** Task 07
 

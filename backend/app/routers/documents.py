@@ -2,19 +2,31 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from sqlalchemy import Engine
 
 from app.config import settings
+from app.db import get_engine
 from app.deps import SessionDep
 from app.models.document import Document
 from app.schemas.document import DocumentRead
 from app.seed import SEED_USER_ID
+from app.services.llm import LLMProvider, get_llm_provider
+from ingestion.index import VectorStore, get_vector_store
+from ingestion.pipeline import ingest_document
 
 router = APIRouter()
 
 
 @router.post("/documents", response_model=DocumentRead, status_code=202)
-async def upload_document(session: SessionDep, file: UploadFile = File(...)) -> Document:
+async def upload_document(
+    background_tasks: BackgroundTasks,
+    session: SessionDep,
+    file: UploadFile = File(...),
+    engine: Engine = Depends(get_engine),
+    llm: LLMProvider = Depends(get_llm_provider),
+    vector_store: VectorStore = Depends(get_vector_store),
+) -> Document:
     contents = await file.read()
 
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
@@ -39,4 +51,13 @@ async def upload_document(session: SessionDep, file: UploadFile = File(...)) -> 
     session.add(document)
     session.commit()
     session.refresh(document)
+
+    background_tasks.add_task(
+        ingest_document,
+        document.id,
+        engine=engine,
+        llm=llm,
+        vector_store=vector_store,
+    )
+
     return document

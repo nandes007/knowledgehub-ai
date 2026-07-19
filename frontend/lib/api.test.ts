@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createConversation,
+  deleteDocument,
   getConversationMessages,
   listConversations,
+  listDocuments,
   sendChatMessage,
+  uploadDocument,
 } from "./api";
 
 function sseResponse(body: string, init?: ResponseInit): Response {
@@ -195,5 +198,107 @@ describe("getConversationMessages", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getConversationMessages("missing")).rejects.toThrow("404");
+  });
+});
+
+describe("listDocuments", () => {
+  it("returns the parsed document list from GET /documents", async () => {
+    const body = [
+      {
+        id: "d1",
+        filename: "policy.md",
+        status: "ready",
+        chunk_count: 3,
+        error_message: null,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "d2",
+        filename: "handbook.pdf",
+        status: "failed",
+        chunk_count: null,
+        error_message: "unsupported format",
+        created_at: "2026-01-02T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await listDocuments();
+
+    expect(result).toEqual([
+      {
+        id: "d1",
+        filename: "policy.md",
+        status: "ready",
+        chunkCount: 3,
+        errorMessage: null,
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "d2",
+        filename: "handbook.pdf",
+        status: "failed",
+        chunkCount: null,
+        errorMessage: "unsupported format",
+        createdAt: "2026-01-02T00:00:00Z",
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/documents");
+  });
+
+  it("throws a friendly error when the server is unreachable", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listDocuments()).rejects.toThrow(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
+  });
+});
+
+describe("uploadDocument", () => {
+  it("POSTs the file as multipart form data and returns the created document", async () => {
+    const body = { id: "d3", filename: "handbook.pdf", status: "processing" };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["contents"], "handbook.pdf", { type: "application/pdf" });
+
+    const result = await uploadDocument(file);
+
+    expect(result).toEqual({ id: "d3", filename: "handbook.pdf", status: "processing" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/documents");
+    expect(options.method).toBe("POST");
+    expect(options.body).toBeInstanceOf(FormData);
+    expect((options.body as FormData).get("file")).toBe(file);
+  });
+
+  it("throws when the upload is rejected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("too big", { status: 413 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["contents"], "big.pdf", { type: "application/pdf" });
+
+    await expect(uploadDocument(file)).rejects.toThrow("413");
+  });
+});
+
+describe("deleteDocument", () => {
+  it("DELETEs /documents/{id}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteDocument("d1");
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/documents/d1");
+    expect(options.method).toBe("DELETE");
+  });
+
+  it("throws a 404 when the document doesn't exist", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteDocument("missing")).rejects.toThrow("404");
   });
 });

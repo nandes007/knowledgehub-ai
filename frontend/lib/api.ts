@@ -55,3 +55,47 @@ export async function sendChatMessage(
 
   throw new Error("Chat stream ended without a done event");
 }
+
+export type Conversation = {
+  id: string;
+  title: string;
+};
+
+export async function listConversations(): Promise<Conversation[]> {
+  const response = await fetch(`${API_URL}/conversations`);
+  if (!response.ok) {
+    throw new Error(`Failed to load conversations: ${response.status}`);
+  }
+  const data = (await response.json()) as { id: string; title: string }[];
+  return data.map(({ id, title }) => ({ id, title }));
+}
+
+export async function createConversation(): Promise<Conversation> {
+  const response = await fetch(`${API_URL}/conversations`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`Failed to create conversation: ${response.status}`);
+  }
+  const { id, title } = (await response.json()) as { id: string; title: string };
+  return { id, title };
+}
+
+export type ConversationMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources: Source[];
+};
+
+export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
+  const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`);
+  if (!response.ok) {
+    throw new Error(`Failed to load conversation messages: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    sources: Source[] | null;
+  }[];
+  return data.map(({ id, role, content, sources }) => ({ id, role, content, sources: sources ?? [] }));
+}

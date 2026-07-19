@@ -6,12 +6,12 @@
 **Description:** Sidebar loads real conversations, click to open, "New chat" creates one, active conversation highlighted, auto-title from first message.
 
 **Acceptance criteria:**
-- [ ] Sidebar lists real conversations (newest first)
-- [ ] Click opens `chat/[conversationId]`; active one highlighted
-- [ ] "New chat" creates a conversation; title auto-set from first message
+- [x] Sidebar lists real conversations (newest first)
+- [x] Click opens `chat/[conversationId]`; active one highlighted
+- [x] "New chat" creates a conversation; title auto-set from first message
 
 **Verification:**
-- [ ] Refresh the page: every past conversation is still there and openable
+- [x] Refresh the page: every past conversation is still there and openable
 
 **Dependencies:** Task 08
 

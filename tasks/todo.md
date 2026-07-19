@@ -16,7 +16,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 - [ ] [06 Chat UI layout (fake data)](06-chat-ui-layout.md) — [#7](https://github.com/nandes007/knowledgehub-ai/issues/7)
 - [ ] [07 Wire frontend to backend](07-wire-frontend-backend.md) — [#8](https://github.com/nandes007/knowledgehub-ai/issues/8)
 - [x] [08 Streaming UI](08-streaming-ui.md) — [#9](https://github.com/nandes007/knowledgehub-ai/issues/9)
-- [ ] [09 History UI](09-history-ui.md) — [#10](https://github.com/nandes007/knowledgehub-ai/issues/10)
+- [x] [09 History UI](09-history-ui.md) — [#10](https://github.com/nandes007/knowledgehub-ai/issues/10)
 - [ ] [10 UI polish → tag v0.2.0](10-ui-polish-v020.md) — [#11](https://github.com/nandes007/knowledgehub-ai/issues/11) ← checkpoint
 
 ## Phase 3: Knowledge upload (11–13 can run parallel to 06–10)

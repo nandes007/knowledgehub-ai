@@ -1,16 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { sendChatMessage } from "@/lib/api";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
+import { useConversations } from "./ConversationsProvider";
 
-export function ChatPanel() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+type ChatPanelProps = {
+  conversationId?: string;
+  initialMessages?: ChatMessage[];
+};
+
+export function ChatPanel({ conversationId: initialConversationId, initialMessages = [] }: ChatPanelProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
-  const [conversationId, setConversationId] = useState<string | undefined>();
+  const [conversationId, setConversationId] = useState(initialConversationId);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const { addOrRename } = useConversations();
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ block: "end" });
@@ -21,6 +30,7 @@ export function ChatPanel() {
     const question = draft.trim();
     if (!question || isSending) return;
 
+    const isNewConversation = !conversationId;
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: question }]);
     setDraft("");
     setError(null);
@@ -36,6 +46,10 @@ export function ChatPanel() {
         );
       });
       setConversationId(result.conversationId);
+      addOrRename(result.conversationId, question);
+      if (isNewConversation) {
+        router.replace(`/chat/${result.conversationId}`);
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId ? { ...m, id: result.messageId, content: result.answer, streaming: false } : m,

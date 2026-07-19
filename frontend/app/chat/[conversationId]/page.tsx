@@ -17,6 +17,7 @@ export default function ChatConversationPage({
 
 function ConversationLoader({ conversationId }: { conversationId: string }) {
   const [initialMessages, setInitialMessages] = useState<ChatMessage[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { addOrRename } = useConversations();
 
   useEffect(() => {
@@ -26,8 +27,16 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
         const firstUserMessage = messages.find((m) => m.role === "user");
         if (firstUserMessage) addOrRename(conversationId, firstUserMessage.content);
       })
-      .catch(() => setInitialMessages([]));
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load this conversation."));
   }, [conversationId, addOrRename]);
+
+  if (loadError) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-red-600 dark:text-red-400">
+        {loadError}
+      </div>
+    );
+  }
 
   if (initialMessages === null) {
     return (

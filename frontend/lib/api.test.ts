@@ -68,6 +68,15 @@ describe("sendChatMessage", () => {
     await expect(sendChatMessage("hi")).rejects.toThrow("404");
   });
 
+  it("throws a friendly error when the server is unreachable", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendChatMessage("hi")).rejects.toThrow(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
+  });
+
   it("invokes onToken for each token event as it streams in, before done resolves", async () => {
     const body =
       'event: token\ndata: {"text": "Employees "}\n\n' +
@@ -81,6 +90,24 @@ describe("sendChatMessage", () => {
 
     expect(chunks).toEqual(["Employees ", "get 20 days."]);
     expect(result.answer).toBe("Employees get 20 days.");
+  });
+
+  it("throws a friendly error if the connection drops mid-stream", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: token\ndata: {"text": "Hel"}\n\n'));
+      },
+      pull() {
+        return Promise.reject(new TypeError("network error"));
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(stream));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendChatMessage("hi")).rejects.toThrow(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
   });
 });
 
@@ -107,6 +134,15 @@ describe("listConversations", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(listConversations()).rejects.toThrow("500");
+  });
+
+  it("throws a friendly error when the server is unreachable", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listConversations()).rejects.toThrow(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
   });
 });
 

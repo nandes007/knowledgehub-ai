@@ -11,6 +11,7 @@ function deriveTitle(message: string): string {
 
 type ConversationsContextValue = {
   conversations: Conversation[];
+  loadError: string | null;
   createAndAdd: () => Promise<Conversation>;
   addOrRename: (id: string, firstMessage: string) => void;
 };
@@ -19,6 +20,7 @@ const ConversationsContext = createContext<ConversationsContextValue | null>(nul
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // First-write-wins titles derived client-side, since the backend never persists a real
   // title. Kept outside React state so a slow GET /conversations can't clobber a title
   // that a page already derived from that conversation's first message.
@@ -32,7 +34,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     listConversations()
       .then((list) => setConversations(applyOverrides(list)))
-      .catch(() => {});
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load conversations."));
   }, [applyOverrides]);
 
   const createAndAdd = useCallback(async () => {
@@ -54,7 +56,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   return (
-    <ConversationsContext.Provider value={{ conversations, createAndAdd, addOrRename }}>
+    <ConversationsContext.Provider value={{ conversations, loadError, createAndAdd, addOrRename }}>
       {children}
     </ConversationsContext.Provider>
   );

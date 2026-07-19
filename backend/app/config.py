@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-large"
     chat_model: str = "gpt-4o-mini"
     cors_origins: str = "http://localhost:3000"
+    upload_dir: str = "./uploads"
+    max_upload_size_mb: int = 25
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

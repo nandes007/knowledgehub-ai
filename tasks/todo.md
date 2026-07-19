@@ -20,7 +20,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 - [ ] [10 UI polish → tag v0.2.0](10-ui-polish-v020.md) — [#11](https://github.com/nandes007/knowledgehub-ai/issues/11) ← checkpoint
 
 ## Phase 3: Knowledge upload (11–13 can run parallel to 06–10)
-- [ ] [11 Upload endpoint](11-upload-endpoint.md) — [#12](https://github.com/nandes007/knowledgehub-ai/issues/12)
+- [x] [11 Upload endpoint](11-upload-endpoint.md) — [#12](https://github.com/nandes007/knowledgehub-ai/issues/12)
 - [ ] [12 Background ingestion + per-file upsert](12-background-ingestion.md) — [#13](https://github.com/nandes007/knowledgehub-ai/issues/13)
 - [ ] [13 Document list & delete](13-document-list-delete.md) — [#14](https://github.com/nandes007/knowledgehub-ai/issues/14)
 - [ ] [14 Knowledge page UI](14-knowledge-page-ui.md) — [#15](https://github.com/nandes007/knowledgehub-ai/issues/15)

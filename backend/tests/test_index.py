@@ -57,3 +57,17 @@ def test_upsert_returns_chunk_count(tmp_path):
     )
 
     assert count == 2
+
+
+def test_delete_by_document_removes_only_that_documents_chunks(tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path))
+    c1 = Chunk(text="doc1 content", index=0, h1=None, h2=None)
+    c2 = Chunk(text="doc2 content", index=0, h1=None, h2=None)
+    store.upsert_chunks(document_id="doc-1", user_id="u1", filename="a.md", chunks=[c1], embeddings=[[1.0, 0.0]])
+    store.upsert_chunks(document_id="doc-2", user_id="u1", filename="b.md", chunks=[c2], embeddings=[[1.0, 0.0]])
+
+    store.delete_by_document("doc-1")
+
+    results = store.query([1.0, 0.0], top_k=10)
+    assert all(r["document_id"] != "doc-1" for r in results)
+    assert any(r["document_id"] == "doc-2" for r in results)

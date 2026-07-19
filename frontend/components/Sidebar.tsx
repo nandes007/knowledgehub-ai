@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useConversations } from "./ConversationsProvider";
 
 export function Sidebar() {
   const { conversations, loadError, createAndAdd } = useConversations();
   const params = useParams<{ conversationId?: string }>();
+  const pathname = usePathname();
   const router = useRouter();
   const activeId = params?.conversationId;
   const [isOpen, setIsOpen] = useState(false);
@@ -47,7 +48,7 @@ export function Sidebar() {
           isOpen ? "translate-x-0" : ""
         }`}
       >
-        <div className="p-3 pt-16 md:pt-3">
+        <div className="space-y-2 p-3 pt-16 md:pt-3">
           <button
             type="button"
             onClick={handleNewChat}
@@ -55,7 +56,18 @@ export function Sidebar() {
           >
             + New chat
           </button>
-          {createError && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{createError}</p>}
+          {createError && <p className="text-xs text-red-600 dark:text-red-400">{createError}</p>}
+          <Link
+            href="/knowledge"
+            onClick={() => setIsOpen(false)}
+            className={`block rounded-lg px-3 py-2 text-sm ${
+              pathname === "/knowledge"
+                ? "bg-zinc-200 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
+            }`}
+          >
+            Knowledge base
+          </Link>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-3">
           {loadError ? (

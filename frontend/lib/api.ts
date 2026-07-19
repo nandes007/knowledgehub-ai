@@ -120,3 +120,60 @@ export async function getConversationMessages(conversationId: string): Promise<C
   }[];
   return data.map(({ id, role, content, sources }) => ({ id, role, content, sources: sources ?? [] }));
 }
+
+export type DocumentStatus = "processing" | "ready" | "failed";
+
+export type Document = {
+  id: string;
+  filename: string;
+  status: DocumentStatus;
+  chunkCount: number | null;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
+export async function listDocuments(): Promise<Document[]> {
+  const response = await apiFetch(`${API_URL}/documents`);
+  if (!response.ok) {
+    throw new Error(`Failed to load documents: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    filename: string;
+    status: DocumentStatus;
+    chunk_count: number | null;
+    error_message: string | null;
+    created_at: string;
+  }[];
+  return data.map(({ id, filename, status, chunk_count, error_message, created_at }) => ({
+    id,
+    filename,
+    status,
+    chunkCount: chunk_count,
+    errorMessage: error_message,
+    createdAt: created_at,
+  }));
+}
+
+export type UploadedDocument = {
+  id: string;
+  filename: string;
+  status: DocumentStatus;
+};
+
+export async function uploadDocument(file: File): Promise<UploadedDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiFetch(`${API_URL}/documents`, { method: "POST", body: formData });
+  if (!response.ok) {
+    throw new Error(`Failed to upload document: ${response.status}`);
+  }
+  return (await response.json()) as UploadedDocument;
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  const response = await apiFetch(`${API_URL}/documents/${documentId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`Failed to delete document: ${response.status}`);
+  }
+}

@@ -62,4 +62,19 @@ describe("sendChatMessage", () => {
 
     await expect(sendChatMessage("hi")).rejects.toThrow("404");
   });
+
+  it("invokes onToken for each token event as it streams in, before done resolves", async () => {
+    const body =
+      'event: token\ndata: {"text": "Employees "}\n\n' +
+      'event: token\ndata: {"text": "get 20 days."}\n\n' +
+      'event: done\ndata: {"sources": [], "message_id": "m1", "conversation_id": "c1"}\n\n';
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(body));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const chunks: string[] = [];
+    const result = await sendChatMessage("How many vacation days?", undefined, (text) => chunks.push(text));
+
+    expect(chunks).toEqual(["Employees ", "get 20 days."]);
+    expect(result.answer).toBe("Employees get 20 days.");
+  });
 });

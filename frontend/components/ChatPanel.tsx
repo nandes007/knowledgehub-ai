@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { sendChatMessage } from "@/lib/api";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 
@@ -10,6 +10,11 @@ export function ChatPanel() {
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollAnchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollAnchorRef.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -21,14 +26,23 @@ export function ChatPanel() {
     setError(null);
     setIsSending(true);
 
+    const assistantId = crypto.randomUUID();
+    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "", streaming: true }]);
+
     try {
-      const result = await sendChatMessage(question, conversationId);
+      const result = await sendChatMessage(question, conversationId, (text) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + text } : m)),
+        );
+      });
       setConversationId(result.conversationId);
-      setMessages((prev) => [
-        ...prev,
-        { id: result.messageId, role: "assistant", content: result.answer },
-      ]);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, id: result.messageId, content: result.answer, streaming: false } : m,
+        ),
+      );
     } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== assistantId));
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setIsSending(false);
@@ -42,6 +56,7 @@ export function ChatPanel() {
           <MessageBubble key={message.id} message={message} />
         ))}
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div ref={scrollAnchorRef} />
       </div>
       <form
         className="flex gap-2 border-t border-zinc-200 p-4 dark:border-zinc-800"

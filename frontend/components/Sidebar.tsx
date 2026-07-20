@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
+import { useAuth } from "./AuthProvider";
 import { useConversations } from "./ConversationsProvider";
 
 export function Sidebar() {
   const { conversations, loadError, createAndAdd } = useConversations();
+  const { logout } = useAuth();
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
   const router = useRouter();
@@ -23,6 +25,12 @@ export function Sidebar() {
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Couldn't start a new chat.");
     }
+  }
+
+  function handleLogout() {
+    logout();
+    setIsOpen(false);
+    router.replace("/login");
   }
 
   return (
@@ -96,6 +104,15 @@ export function Sidebar() {
             </ul>
           )}
         </nav>
+        <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
+          >
+            Log out
+          </button>
+        </div>
       </aside>
     </>
   );

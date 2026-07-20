@@ -6,12 +6,12 @@
 **Description:** Login/register pages, token storage, authenticated fetch wrapper, redirect unauthenticated users, logout.
 
 **Acceptance criteria:**
-- [ ] `(auth)/login` and `(auth)/register` pages work
-- [ ] Token attached to every API call (including SSE)
-- [ ] Unauthenticated visits redirect to login; logout clears the session
+- [x] `(auth)/login` and `(auth)/register` pages work
+- [x] Token attached to every API call (including SSE)
+- [x] Unauthenticated visits redirect to login; logout clears the session
 
 **Verification:**
-- [ ] Fresh browser → register → land in an empty, private workspace
+- [x] Fresh browser → register → land in an empty, private workspace
 
 **Dependencies:** Task 16
 

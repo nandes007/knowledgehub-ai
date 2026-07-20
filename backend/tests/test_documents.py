@@ -7,7 +7,6 @@ from sqlmodel import Session
 from app.config import settings
 from app.main import app
 from app.models.document import Document
-from app.seed import SEED_USER_ID
 from app.services.llm import get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
 
@@ -80,7 +79,7 @@ def test_upload_document_saves_file_and_computes_hash(client, db_engine, tmp_pat
     assert saved_path.read_bytes() == content
 
 
-def test_upload_document_row_is_owned_by_the_seed_user(client, db_engine, tmp_path, monkeypatch):
+def test_upload_document_row_is_owned_by_the_authenticated_user(client, db_engine, tmp_path, monkeypatch, test_user_id):
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
     _override_llm(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
@@ -96,7 +95,7 @@ def test_upload_document_row_is_owned_by_the_seed_user(client, db_engine, tmp_pa
     with Session(db_engine) as session:
         document = session.get(Document, document_id)
 
-    assert document.user_id == SEED_USER_ID
+    assert document.user_id == test_user_id
 
 
 def test_upload_document_rejects_files_over_the_size_limit(client, tmp_path, monkeypatch):

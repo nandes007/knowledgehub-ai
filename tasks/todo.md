@@ -27,7 +27,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 - [x] [15 End-to-end loop → tag v0.3.0](15-e2e-loop-v030.md) — [#16](https://github.com/nandes007/knowledgehub-ai/issues/16) ← checkpoint
 
 ## Phase 4: Auth + citations + robustness
-- [ ] [16 Auth backend](16-auth-backend.md) — [#17](https://github.com/nandes007/knowledgehub-ai/issues/17)
+- [x] [16 Auth backend](16-auth-backend.md) — [#17](https://github.com/nandes007/knowledgehub-ai/issues/17)
 - [ ] [17 Auth frontend](17-auth-frontend.md) — [#18](https://github.com/nandes007/knowledgehub-ai/issues/18)
 - [ ] [18 Citations](18-citations.md) — [#19](https://github.com/nandes007/knowledgehub-ai/issues/19)
 - [ ] [19 Ugly inputs → tag v0.4.0](19-ugly-inputs-v040.md) — [#20](https://github.com/nandes007/knowledgehub-ai/issues/20) ← checkpoint

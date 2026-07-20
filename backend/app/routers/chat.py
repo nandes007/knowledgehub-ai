@@ -8,10 +8,10 @@ from sqlalchemy import Engine
 from sqlmodel import Session, select
 
 from app.db import get_engine
+from app.deps import CurrentUserDep
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.chat import ChatRequest
-from app.seed import SEED_USER_ID
 from app.services.llm import LLMProvider, get_llm_provider
 from app.services.rag import stream_answer
 from ingestion.index import VectorStore, get_vector_store
@@ -25,16 +25,18 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _get_or_create_conversation(session: Session, conversation_id: uuid.UUID | None) -> Conversation:
+def _get_or_create_conversation(
+    session: Session, conversation_id: uuid.UUID | None, user_id: uuid.UUID
+) -> Conversation:
     if conversation_id is None:
-        conversation = Conversation(user_id=SEED_USER_ID)
+        conversation = Conversation(user_id=user_id)
         session.add(conversation)
         session.commit()
         session.refresh(conversation)
         return conversation
 
     conversation = session.get(Conversation, conversation_id)
-    if conversation is None or conversation.user_id != SEED_USER_ID:
+    if conversation is None or conversation.user_id != user_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
 
@@ -92,12 +94,13 @@ def _event_stream(
 @router.post("/chat")
 def chat(
     request: ChatRequest,
+    current_user: CurrentUserDep,
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
     engine: Engine = Depends(get_engine),
 ) -> StreamingResponse:
     with Session(engine) as session:
-        conversation = _get_or_create_conversation(session, request.conversation_id)
+        conversation = _get_or_create_conversation(session, request.conversation_id, current_user.id)
         history = _recent_history(session, conversation.id, _HISTORY_LIMIT)
         session.add(Message(conversation_id=conversation.id, role="user", content=request.message))
         session.commit()
@@ -105,7 +108,7 @@ def chat(
 
     tokens, sources = stream_answer(
         request.message,
-        user_id=str(SEED_USER_ID),
+        user_id=str(current_user.id),
         llm=llm,
         vector_store=vector_store,
         history=history,

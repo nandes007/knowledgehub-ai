@@ -8,10 +8,9 @@ from sqlmodel import select
 
 from app.config import settings
 from app.db import get_engine
-from app.deps import SessionDep
+from app.deps import CurrentUserDep, SessionDep
 from app.models.document import Document
 from app.schemas.document import DocumentRead, DocumentSummary
-from app.seed import SEED_USER_ID
 from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
 from ingestion.pipeline import ingest_document
@@ -23,6 +22,7 @@ router = APIRouter()
 async def upload_document(
     background_tasks: BackgroundTasks,
     session: SessionDep,
+    current_user: CurrentUserDep,
     file: UploadFile = File(...),
     engine: Engine = Depends(get_engine),
     llm: LLMProvider = Depends(get_llm_provider),
@@ -42,7 +42,7 @@ async def upload_document(
 
     document = Document(
         id=document_id,
-        user_id=SEED_USER_ID,
+        user_id=current_user.id,
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
         file_path=str(file_path),
@@ -65,10 +65,10 @@ async def upload_document(
 
 
 @router.get("/documents", response_model=list[DocumentSummary])
-def list_documents(session: SessionDep) -> list[Document]:
+def list_documents(session: SessionDep, current_user: CurrentUserDep) -> list[Document]:
     statement = (
         select(Document)
-        .where(Document.user_id == SEED_USER_ID)
+        .where(Document.user_id == current_user.id)
         .order_by(Document.created_at.desc())
     )
     return list(session.exec(statement))
@@ -78,10 +78,11 @@ def list_documents(session: SessionDep) -> list[Document]:
 def delete_document(
     document_id: uuid.UUID,
     session: SessionDep,
+    current_user: CurrentUserDep,
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> None:
     document = session.get(Document, document_id)
-    if document is None or document.user_id != SEED_USER_ID:
+    if document is None or document.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Document not found")
 
     Path(document.file_path).unlink(missing_ok=True)

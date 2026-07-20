@@ -11,7 +11,7 @@
 
 **Verification:**
 - [x] Demo the full loop in under 2 minutes without touching a terminal
-- [ ] Tag `v0.3.0` pushed
+- [x] Tag `v0.3.0` pushed
 
 **Dependencies:** Task 14
 

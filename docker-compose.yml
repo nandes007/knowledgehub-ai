@@ -15,5 +15,41 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      # Container-topology values: not user config, so not sourced from .env.
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/knowledgehub
+      CHROMA_PERSIST_DIR: /data/chroma
+      UPLOAD_DIR: /data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/data/chroma
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    env_file: .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  chroma_data:
+  uploads_data:

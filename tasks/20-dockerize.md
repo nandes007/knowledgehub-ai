@@ -6,12 +6,12 @@
 **Description:** Backend + frontend Dockerfiles, full docker-compose (Postgres, backend, frontend, volumes for Chroma + uploads).
 
 **Acceptance criteria:**
-- [ ] Multi-stage Dockerfiles for backend and frontend
-- [ ] docker-compose runs all services with named volumes for Postgres, Chroma, uploads
-- [ ] All config via env vars, documented in `.env.example`
+- [x] Multi-stage Dockerfiles for backend and frontend
+- [x] docker-compose runs all services with named volumes for Postgres, Chroma, uploads
+- [x] All config via env vars, documented in `.env.example`
 
 **Verification:**
-- [ ] Fresh clone + `.env` + `docker compose up` = working app end-to-end
+- [x] Fresh clone + `.env` + `docker compose up` = working app end-to-end
 
 **Dependencies:** Task 19
 

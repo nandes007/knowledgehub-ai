@@ -33,7 +33,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 - [x] [19 Ugly inputs → tag v0.4.0](19-ugly-inputs-v040.md) — [#20](https://github.com/nandes007/knowledgehub-ai/issues/20) ← checkpoint
 
 ## Phase 5: Production
-- [ ] [20 Dockerize](20-dockerize.md) — [#21](https://github.com/nandes007/knowledgehub-ai/issues/21)
+- [x] [20 Dockerize](20-dockerize.md) — [#21](https://github.com/nandes007/knowledgehub-ai/issues/21)
 - [ ] [21 Deploy](21-deploy.md) — [#22](https://github.com/nandes007/knowledgehub-ai/issues/22)
 - [ ] [22 Observability](22-observability.md) — [#23](https://github.com/nandes007/knowledgehub-ai/issues/23)
 - [ ] [23 Hardening](23-hardening.md) — [#24](https://github.com/nandes007/knowledgehub-ai/issues/24)

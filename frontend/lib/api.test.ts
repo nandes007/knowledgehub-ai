@@ -278,7 +278,16 @@ describe("uploadDocument", () => {
     expect((options.body as FormData).get("file")).toBe(file);
   });
 
-  it("throws when the upload is rejected", async () => {
+  it("throws the backend's detail message when the upload is rejected", async () => {
+    const body = JSON.stringify({ detail: "Unsupported file type '.exe'. Supported: PDF, DOCX, PPTX, MD." });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["contents"], "virus.exe", { type: "application/octet-stream" });
+
+    await expect(uploadDocument(file)).rejects.toThrow("Unsupported file type");
+  });
+
+  it("falls back to a generic message when the error response has no detail", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("too big", { status: 413 }));
     vi.stubGlobal("fetch", fetchMock);
     const file = new File(["contents"], "big.pdf", { type: "application/pdf" });

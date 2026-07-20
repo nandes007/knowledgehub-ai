@@ -182,7 +182,11 @@ export async function uploadDocument(file: File): Promise<UploadedDocument> {
   formData.append("file", file);
   const response = await apiFetch(`${API_URL}/documents`, { method: "POST", body: formData });
   if (!response.ok) {
-    throw new Error(`Failed to upload document: ${response.status}`);
+    const detail = await response
+      .json()
+      .then((body: { detail?: string }) => body.detail)
+      .catch(() => undefined);
+    throw new Error(detail ?? `Failed to upload document: ${response.status}`);
   }
   return (await response.json()) as UploadedDocument;
 }

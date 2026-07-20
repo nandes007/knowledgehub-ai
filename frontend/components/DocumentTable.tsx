@@ -81,12 +81,12 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
             <tr key={doc.id} className="border-b border-zinc-100 dark:border-zinc-900">
               <td className="max-w-xs truncate py-2 pr-4">{doc.filename}</td>
               <td className="py-2 pr-4">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[doc.status]}`}
-                  title={doc.errorMessage ?? undefined}
-                >
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[doc.status]}`}>
                   {doc.status}
                 </span>
+                {doc.status === "failed" && doc.errorMessage && (
+                  <p className="mt-1 max-w-xs text-xs text-red-600 dark:text-red-400">{doc.errorMessage}</p>
+                )}
               </td>
               <td className="py-2 pr-4 text-zinc-500 dark:text-zinc-400">{formatDate(doc.createdAt)}</td>
               <td className="py-2 text-right">

@@ -10,6 +10,8 @@ from ingestion.chunk import chunk_markdown
 from ingestion.convert import convert_to_markdown
 from ingestion.index import VectorStore, get_vector_store
 
+_MIN_EXTRACTED_CHARS = 20
+
 
 def ingest_file(
     file_path: Path,
@@ -26,6 +28,10 @@ def ingest_file(
     vector_store = vector_store or get_vector_store()
 
     text = convert_to_markdown(file_path)
+    if len(text.strip()) < _MIN_EXTRACTED_CHARS:
+        raise ValueError(
+            "This file has no readable text — it may be a scanned PDF or image that needs OCR."
+        )
     chunks = chunk_markdown(text)
     embeddings = llm.embed_texts([c.text for c in chunks])
 

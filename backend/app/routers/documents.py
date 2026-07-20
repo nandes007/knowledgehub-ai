@@ -17,6 +17,8 @@ from ingestion.pipeline import ingest_document
 
 router = APIRouter()
 
+_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md"}
+
 
 @router.post("/documents", response_model=DocumentRead, status_code=202)
 async def upload_document(
@@ -34,6 +36,23 @@ async def upload_document(
     if len(contents) > max_bytes:
         raise HTTPException(status_code=413, detail="File exceeds the upload size limit")
 
+    extension = Path(file.filename or "").suffix.lower()
+    if extension not in _SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{extension or 'unknown'}'. Supported: PDF, DOCX, PPTX, MD.",
+        )
+
+    file_hash = hashlib.sha256(contents).hexdigest()
+    existing = session.exec(
+        select(Document).where(Document.user_id == current_user.id, Document.file_hash == file_hash)
+    ).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This file has already been uploaded as '{existing.filename}'.",
+        )
+
     document_id = uuid.uuid4()
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +65,7 @@ async def upload_document(
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
         file_path=str(file_path),
-        file_hash=hashlib.sha256(contents).hexdigest(),
+        file_hash=file_hash,
         status="processing",
     )
     session.add(document)

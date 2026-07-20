@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from sqlmodel import Session
 
 from app.models.document import Document
@@ -15,6 +16,22 @@ class _FakeLLM:
 class _FailingLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         raise RuntimeError("embedding API is down")
+
+
+def test_ingest_file_raises_a_clear_error_when_extracted_text_is_near_empty(tmp_path):
+    file_path = tmp_path / "scanned.md"
+    file_path.write_text("   \n\n  \n")
+    store = VectorStore(persist_dir=str(tmp_path / "chroma"))
+
+    with pytest.raises(ValueError, match="no readable text"):
+        ingest_file(
+            file_path,
+            document_id="doc-1",
+            user_id="u1",
+            filename="scanned.md",
+            llm=_FakeLLM(),
+            vector_store=store,
+        )
 
 
 def test_ingest_file_converts_chunks_embeds_and_upserts(tmp_path):

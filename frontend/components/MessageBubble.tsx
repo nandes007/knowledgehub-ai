@@ -1,10 +1,13 @@
 import ReactMarkdown from "react-markdown";
+import { SourceList } from "./SourceList";
+import type { Source } from "@/lib/api";
 
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
+  sources?: Source[];
 };
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
@@ -25,9 +28,12 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         ) : isUser ? (
           message.content
         ) : (
-          <div className="[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 dark:[&_code]:bg-white/10">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
-          </div>
+          <>
+            <div className="[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 dark:[&_code]:bg-white/10">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
+            {!message.streaming && message.sources && <SourceList sources={message.sources} />}
+          </>
         )}
       </div>
     </div>

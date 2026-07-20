@@ -6,11 +6,11 @@
 **Description:** Upload PDF → ready → ask about it → cited, correct answer. Fix everything that breaks (something will). Tag `v0.3.0`.
 
 **Acceptance criteria:**
-- [ ] Full loop works for PDF, DOCX, PPTX, and MD
-- [ ] All bugs found during the loop fixed
+- [x] Full loop works for PDF, DOCX, PPTX, and MD
+- [x] All bugs found during the loop fixed
 
 **Verification:**
-- [ ] Demo the full loop in under 2 minutes without touching a terminal
+- [x] Demo the full loop in under 2 minutes without touching a terminal
 - [ ] Tag `v0.3.0` pushed
 
 **Dependencies:** Task 14

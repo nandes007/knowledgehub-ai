@@ -104,10 +104,14 @@ def test_upload_document_rejects_files_over_the_size_limit(client, tmp_path, mon
     monkeypatch.setattr(settings, "max_upload_size_mb", 1)
     oversized = b"x" * (2 * 1024 * 1024)
 
-    response = client.post(
-        "/documents",
-        files={"file": ("big.txt", oversized, "text/plain")},
-    )
+    _override_llm(_FakeLLM())
+    try:
+        response = client.post(
+            "/documents",
+            files={"file": ("big.txt", oversized, "text/plain")},
+        )
+    finally:
+        _clear_overrides()
 
     assert response.status_code == 413
     assert list(Path(tmp_path).iterdir()) == []

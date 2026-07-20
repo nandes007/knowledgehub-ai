@@ -5,9 +5,12 @@ import {
   getConversationMessages,
   listConversations,
   listDocuments,
+  loginAccount,
+  registerAccount,
   sendChatMessage,
   uploadDocument,
 } from "./api";
+import { clearToken, getToken, setToken } from "./auth";
 
 function sseResponse(body: string, init?: ResponseInit): Response {
   return new Response(body, {
@@ -19,6 +22,7 @@ function sseResponse(body: string, init?: ResponseInit): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clearToken();
 });
 
 describe("sendChatMessage", () => {
@@ -300,5 +304,103 @@ describe("deleteDocument", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(deleteDocument("missing")).rejects.toThrow("404");
+  });
+});
+
+describe("authenticated requests", () => {
+  it("attaches the stored token as a Bearer header", async () => {
+    setToken("my-token");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listConversations();
+
+    const [, options] = fetchMock.mock.calls[0];
+    const headers = new Headers(options.headers);
+    expect(headers.get("Authorization")).toBe("Bearer my-token");
+  });
+
+  it("sends no Authorization header when there is no stored token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listConversations();
+
+    const [, options] = fetchMock.mock.calls[0];
+    const headers = new Headers(options.headers);
+    expect(headers.has("Authorization")).toBe(false);
+  });
+
+  it("clears the token when an authenticated request comes back 401", async () => {
+    setToken("stale-token");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", { location: { href: "" } });
+
+    await expect(listConversations()).rejects.toThrow();
+
+    expect(getToken()).toBeNull();
+  });
+
+  it("does not touch the token when a request without one gets a 401", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listConversations()).rejects.toThrow();
+
+    expect(getToken()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("registerAccount", () => {
+  it("POSTs to /auth/register and returns the access token", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ access_token: "new-token", token_type: "bearer" }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await registerAccount("new@example.com", "password123");
+
+    expect(result).toEqual({ accessToken: "new-token" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/auth/register");
+    expect(JSON.parse(options.body)).toEqual({
+      email: "new@example.com",
+      password: "password123",
+      display_name: undefined,
+    });
+  });
+
+  it("throws a friendly message when the email is already registered", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("conflict", { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registerAccount("dup@example.com", "password123")).rejects.toThrow(
+      "An account with that email already exists.",
+    );
+  });
+});
+
+describe("loginAccount", () => {
+  it("POSTs to /auth/login and returns the access token", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ access_token: "existing-token", token_type: "bearer" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await loginAccount("user@example.com", "password123");
+
+    expect(result).toEqual({ accessToken: "existing-token" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/auth/login");
+    expect(JSON.parse(options.body)).toEqual({ email: "user@example.com", password: "password123" });
+  });
+
+  it("throws a friendly message on invalid credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(loginAccount("user@example.com", "wrong")).rejects.toThrow("Invalid email or password.");
   });
 });

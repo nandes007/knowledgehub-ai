@@ -1,3 +1,4 @@
+import { clearToken, getToken } from "./auth";
 import { parseSseStream } from "./sse";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -6,11 +7,26 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // unreachable, e.g. it's down or the network drops. That raw rejection reads as a
 // blank/broken UI, so surface it as a message a user can act on.
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(init?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  let response: Response;
   try {
-    return await fetch(input, init);
+    response = await fetch(input, { ...init, headers });
   } catch {
     throw new Error("Couldn't reach the server. Check your connection and try again.");
   }
+
+  // A 401 on a request that carried a token means the session itself is no
+  // longer valid (expired/revoked) - not a login/register attempt failing,
+  // those never carry a token in the first place.
+  if (response.status === 401 && token) {
+    clearToken();
+    if (typeof window !== "undefined") window.location.href = "/login";
+  }
+
+  return response;
 }
 
 export type Source = {
@@ -176,4 +192,37 @@ export async function deleteDocument(documentId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to delete document: ${response.status}`);
   }
+}
+
+export type AuthResult = { accessToken: string };
+
+export async function registerAccount(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<AuthResult> {
+  const response = await apiFetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, display_name: displayName }),
+  });
+  if (!response.ok) {
+    if (response.status === 409) throw new Error("An account with that email already exists.");
+    throw new Error("Registration failed. Please try again.");
+  }
+  const { access_token } = (await response.json()) as { access_token: string };
+  return { accessToken: access_token };
+}
+
+export async function loginAccount(email: string, password: string): Promise<AuthResult> {
+  const response = await apiFetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    throw new Error("Invalid email or password.");
+  }
+  const { access_token } = (await response.json()) as { access_token: string };
+  return { accessToken: access_token };
 }

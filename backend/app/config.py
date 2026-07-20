@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 25
+    jwt_secret: str = "change-me-to-a-random-secret"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 

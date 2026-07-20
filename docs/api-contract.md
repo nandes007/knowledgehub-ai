@@ -9,7 +9,7 @@ Update this file in the same commit as any endpoint change. This is v0: shapes w
 | POST | `/auth/register` | `{email, password, display_name?}` | `{access_token, token_type}` |
 | POST | `/auth/login` | `{email, password}` | `{access_token, token_type}` |
 
-All routes below require `Authorization: Bearer <access_token>` once Task 16 lands. Until then, a hardcoded user is used (Task 02–15).
+All routes below require `Authorization: Bearer <access_token>`. Missing or invalid tokens get `401`.
 
 ## Chat
 

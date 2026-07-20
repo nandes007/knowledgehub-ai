@@ -2,7 +2,6 @@ import json
 import uuid
 
 from app.main import app
-from app.seed import SEED_USER_ID
 from app.services.llm import get_llm_provider
 from ingestion.chunk import chunk_markdown
 from ingestion.index import VectorStore, get_vector_store
@@ -45,13 +44,13 @@ def _bag_of_words(text: str) -> list[float]:
     return [1.0 if w in words else 0.0 for w in _VOCAB]
 
 
-def _seeded_store(tmp_path) -> VectorStore:
+def _seeded_store(tmp_path, user_id) -> VectorStore:
     store = VectorStore(persist_dir=str(tmp_path))
     chunks = chunk_markdown("# Vacation Policy\n\nEmployees get 20 days of PTO per year.")
     embeddings = [_bag_of_words(c.text) for c in chunks]
     store.upsert_chunks(
         document_id="doc-1",
-        user_id=str(SEED_USER_ID),
+        user_id=str(user_id),
         filename="policy.md",
         chunks=chunks,
         embeddings=embeddings,
@@ -82,9 +81,9 @@ def _clear_overrides() -> None:
     app.dependency_overrides.pop(get_vector_store, None)
 
 
-def test_chat_creates_a_conversation_when_none_given(client, tmp_path):
+def test_chat_creates_a_conversation_when_none_given(client, tmp_path, test_user_id):
     _override(_FakeLLM())
-    _override_store(_seeded_store(tmp_path))
+    _override_store(_seeded_store(tmp_path, test_user_id))
     try:
         response = client.post("/chat", json={"message": "How many vacation days do I get?"})
     finally:
@@ -97,9 +96,9 @@ def test_chat_creates_a_conversation_when_none_given(client, tmp_path):
     assert uuid.UUID(done["message_id"])
 
 
-def test_chat_persists_user_and_assistant_messages(client, tmp_path):
+def test_chat_persists_user_and_assistant_messages(client, tmp_path, test_user_id):
     _override(_FakeLLM())
-    _override_store(_seeded_store(tmp_path))
+    _override_store(_seeded_store(tmp_path, test_user_id))
     try:
         response = client.post("/chat", json={"message": "How many vacation days do I get?"})
     finally:
@@ -114,8 +113,8 @@ def test_chat_persists_user_and_assistant_messages(client, tmp_path):
     assert messages[1]["sources"][0]["filename"] == "policy.md"
 
 
-def test_chat_includes_history_in_the_prompt_for_follow_ups(client, tmp_path):
-    store = _seeded_store(tmp_path)
+def test_chat_includes_history_in_the_prompt_for_follow_ups(client, tmp_path, test_user_id):
+    store = _seeded_store(tmp_path, test_user_id)
     recording_llm = _RecordingLLM()
     _override(recording_llm)
     _override_store(store)
@@ -136,9 +135,9 @@ def test_chat_includes_history_in_the_prompt_for_follow_ups(client, tmp_path):
     assert "20 days" in second_prompt
 
 
-def test_chat_emits_error_event_on_llm_failure_mid_stream(client, tmp_path):
+def test_chat_emits_error_event_on_llm_failure_mid_stream(client, tmp_path, test_user_id):
     _override(_FailingFakeLLM())
-    _override_store(_seeded_store(tmp_path))
+    _override_store(_seeded_store(tmp_path, test_user_id))
     try:
         response = client.post("/chat", json={"message": "How many vacation days do I get?"})
     finally:
@@ -150,9 +149,9 @@ def test_chat_emits_error_event_on_llm_failure_mid_stream(client, tmp_path):
     assert not any(event == "done" for event, _ in events)
 
 
-def test_chat_with_unknown_conversation_id_returns_404(client, tmp_path):
+def test_chat_with_unknown_conversation_id_returns_404(client, tmp_path, test_user_id):
     _override(_FakeLLM())
-    _override_store(_seeded_store(tmp_path))
+    _override_store(_seeded_store(tmp_path, test_user_id))
     try:
         response = client.post(
             "/chat",
@@ -164,9 +163,9 @@ def test_chat_with_unknown_conversation_id_returns_404(client, tmp_path):
     assert response.status_code == 404
 
 
-def test_chat_requires_a_message(client, tmp_path):
+def test_chat_requires_a_message(client, tmp_path, test_user_id):
     _override(_FakeLLM())
-    _override_store(_seeded_store(tmp_path))
+    _override_store(_seeded_store(tmp_path, test_user_id))
     try:
         response = client.post("/chat", json={})
     finally:

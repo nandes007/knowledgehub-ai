@@ -23,7 +23,7 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
   useEffect(() => {
     getConversationMessages(conversationId)
       .then((messages) => {
-        setInitialMessages(messages.map(({ id, role, content }) => ({ id, role, content })));
+        setInitialMessages(messages.map(({ id, role, content, sources }) => ({ id, role, content, sources })));
         const firstUserMessage = messages.find((m) => m.role === "user");
         if (firstUserMessage) addOrRename(conversationId, firstUserMessage.content);
       })

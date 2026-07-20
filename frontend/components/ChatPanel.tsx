@@ -52,7 +52,9 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
       }
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantId ? { ...m, id: result.messageId, content: result.answer, streaming: false } : m,
+          m.id === assistantId
+            ? { ...m, id: result.messageId, content: result.answer, sources: result.sources, streaming: false }
+            : m,
         ),
       );
     } catch (err) {

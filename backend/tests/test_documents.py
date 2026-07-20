@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import settings
 from app.main import app
@@ -114,6 +114,42 @@ def test_upload_document_rejects_files_over_the_size_limit(client, tmp_path, mon
 
     assert response.status_code == 413
     assert list(Path(tmp_path).iterdir()) == []
+
+
+def test_upload_document_rejects_unsupported_file_types(client, db_engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    _override_llm(_FakeLLM())
+    try:
+        response = client.post(
+            "/documents",
+            files={"file": ("virus.exe", b"MZ\x90\x00garbage", "application/octet-stream")},
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 400
+    assert "unsupported file type" in response.json()["detail"].lower()
+    with Session(db_engine) as session:
+        assert session.exec(select(Document)).first() is None
+    assert not (tmp_path / "uploads").exists()
+
+
+def test_upload_document_rejects_a_duplicate_by_file_hash(client, db_engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    content = b"# Policy\n\nEmployees get 20 days of PTO."
+    _override_llm(_FakeLLM())
+    _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
+    try:
+        first = client.post("/documents", files={"file": ("policy.md", content, "text/markdown")})
+        second = client.post("/documents", files={"file": ("policy-copy.md", content, "text/markdown")})
+    finally:
+        _clear_overrides()
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert "already been uploaded" in second.json()["detail"].lower()
+    with Session(db_engine) as session:
+        assert len(list(session.exec(select(Document)))) == 1
 
 
 def test_upload_document_ingests_in_the_background_and_marks_ready(client, db_engine, tmp_path, monkeypatch):

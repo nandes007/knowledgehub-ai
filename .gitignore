@@ -2,6 +2,9 @@
 .env
 .env.local
 
+# local podman override (rootless CNI dnsname workaround, machine-specific)
+docker-compose.override.yml
+
 # python
 __pycache__/
 *.pyc

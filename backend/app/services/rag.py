@@ -6,11 +6,18 @@ from ingestion.index import VectorStore
 _TOP_K = 5
 _CHUNK_PREVIEW_LENGTH = 200
 
-_SYSTEM_PROMPT = (
-    "You are KnowledgeHub AI, an internal knowledge assistant. "
-    "Answer the question using only the provided context. "
-    "If the context doesn't contain the answer, say you don't know."
-)
+_SYSTEM_PROMPT = """"
+You are a knowledgeable, friendly assistant representing the company Pinjolllm.
+You are chatting with a user about Pinjolllm.
+If relevant, use the given context to answer any question.
+If you don't know the answer, say so.
+"""
+
+# _SYSTEM_PROMPT = (
+#     "You are KnowledgeHub AI, an internal knowledge assistant. "
+#     "Answer the question using only the provided context. "
+#     "If the context doesn't contain the answer, say you don't know."
+# )
 
 
 def stream_answer(

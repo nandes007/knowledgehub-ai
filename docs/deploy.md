@@ -1,38 +1,100 @@
 # Deploy checklist
 
-Code/config side (`docker-compose.prod.yml`, `Caddyfile`) is done. Deploys are
-manual — no CI workflow. Full architecture and rationale:
-[`deployment-plan.md`](deployment-plan.md).
+Same pattern as the roombooking.nandes.tech deploy on this server: host nginx
+is the public edge, Cloudflare Flexible in front of it, containers only
+reachable on loopback. No Caddy container, no CI, no cloudflared tunnel.
+Full architecture and rationale: [`deployment-plan.md`](deployment-plan.md)
+(written before this switch — DNS/TLS/proxy sections there are superseded
+by this file).
+
+## 0. Confirm you don't need a tunnel
+
+```bash
+ssh nandes@<server-ip-or-hostname>
+```
+
+If that connects, you're set — skip cloudflared entirely. (It was only ever
+needed for GitHub Actions' SSH, which no longer exists now that deploys are
+manual.)
 
 ## 1. Server (once)
 
-- [ ] SSH into the VPS as root, update OS
-- [ ] Install Podman + `podman-compose`
-- [ ] Install `cloudflared`, authenticate, create a tunnel with an SSH ingress
-      route (e.g. `ssh.knowledgehubai.nandes.tech`) — use this for your own
-      SSH access since the VPS is IPv6-only
-- [ ] Create a non-root `deploy` user, SSH key auth only, running rootless Podman:
-  - `loginctl enable-linger deploy`
-  - `sysctl net.ipv4.ip_unprivileged_port_start=80` so rootless Caddy can bind 80/443
-- [ ] Enable `podman-restart.service` so containers survive reboot
-- [ ] `ufw`/`nftables`: allow 80/443 + SSH, everything else closed
-- [ ] As `deploy`: `mkdir -p ~/knowledgehub-ai`, `podman login ghcr.io` with a
-      read-only PAT (so `podman-compose pull` can fetch images)
-- [ ] Create `~/knowledgehub-ai/.env` by hand — same keys as `.env.example`
-      plus `DOMAIN=knowledgehubai.nandes.tech`; never commit this file
-- [ ] `DATABASE_URL` in that `.env` points at Supabase (`postgresql+psycopg://...`),
-      not a local container — Postgres isn't run on the VPS, so there's nothing
-      to provision or back up here (Supabase handles that)
+- [ ] Clone/copy the project to the server (same as roombooking)
+- [ ] `podman login ghcr.io` with a read-only PAT, so `podman-compose pull` works
+- [ ] Create `.env` in the project dir on the server by hand — same keys as
+      `.env.example`; never commit this file
+- [ ] `DATABASE_URL` in that `.env` points at Supabase
+      (`postgresql+psycopg://...`) — Postgres isn't run on this box
+- [ ] `podman-compose -f docker-compose.prod.yml up -d` (first run pulls images)
 
-## 2. DNS & TLS (once)
+## 2. Host nginx
 
-- [ ] Cloudflare DNS: `AAAA knowledgehubai` → VPS IPv6, proxied
-- [ ] Cloudflare SSL mode: **Full (strict)** — Caddy issues/holds the origin cert
-- [ ] Verify HTTPS loads from an IPv4-only network (e.g. phone on mobile data)
+New server block, same pattern as your other vhosts on this box:
 
-## 3. Deploy (every release)
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name knowledgehubai.nandes.tech;
 
-From your machine (podman — same commands as Docker, `docker` → `podman`):
+    # Backend - exact list of its routes (no /api prefix in this app).
+    location = /healthz {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /auth/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /conversations {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /documents {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # SSE - must not be buffered, or tokens arrive all at once at the end.
+    location = /chat {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+
+    # Everything else - the Next.js frontend.
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+- [ ] `nginx -t && systemctl reload nginx`
+
+## 3. Cloudflare
+
+- [ ] Add `A` record: `knowledgehubai` → server's public IPv4, proxied (orange cloud)
+- [ ] SSL mode: **Flexible** (Cloudflare terminates HTTPS to the visitor, talks
+      plain HTTP to nginx — same as roombooking; origin TLS is a later upgrade,
+      not blocking)
+
+## 4. Deploy (every release)
+
+From your machine (podman):
 
 ```bash
 podman login ghcr.io -u <your-github-username>   # once, PAT with write:packages
@@ -43,29 +105,28 @@ podman build -t ghcr.io/nandes007/knowledgehub-ai-frontend:latest frontend \
 podman push ghcr.io/nandes007/knowledgehub-ai-backend:latest
 podman push ghcr.io/nandes007/knowledgehub-ai-frontend:latest
 
-scp docker-compose.prod.yml Caddyfile deploy@ssh.knowledgehubai.nandes.tech:~/knowledgehub-ai/
+scp docker-compose.prod.yml nandes@<server>:~/knowledgehub-ai/
 ```
 
-Then on the server (`ssh deploy@ssh.knowledgehubai.nandes.tech`):
+Then on the server:
 
 ```bash
 cd ~/knowledgehub-ai
 podman-compose -f docker-compose.prod.yml pull
 podman-compose -f docker-compose.prod.yml up -d
-curl -sf https://knowledgehubai.nandes.tech/healthz
+curl -sf http://127.0.0.1:8000/healthz
 ```
 
 - [ ] First deploy done, `/healthz` returns `{"status": "ok"}`
+- [ ] `https://knowledgehubai.nandes.tech` loads (Cloudflare + nginx path checks out)
 - [ ] From a phone on mobile data: register, upload a document, ask a
       question, watch it stream, check citations
 
 ## Notes
 
-- Caddy routes by the backend's actual route prefixes (`/healthz`, `/auth/*`,
-  `/chat`, `/conversations*`, `/documents*`) — the backend has no `/api` prefix,
-  so this differs from the shorthand `/api/*` in the original plan doc.
-- `/chat` is SSE — `Caddyfile` sets `flush_interval -1` on the backend proxy
-  so tokens aren't buffered.
+- `NEXT_PUBLIC_API_URL` is baked into the frontend image at build time (it's
+  read by browser JS), so it must already be the final public URL — same
+  domain, no separate API subdomain, so no CORS config needed either.
 - Rollback: build+push the previous commit's images tagged `latest` again
   (or tag by SHA and set `IMAGE_TAG=<sha>` before `podman-compose ... up -d`
   on the server), then re-run the deploy steps above.

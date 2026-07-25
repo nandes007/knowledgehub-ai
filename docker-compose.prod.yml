@@ -7,6 +7,9 @@ services:
       # Container-topology values: not user config, so not sourced from .env.
       CHROMA_PERSIST_DIR: /data/chroma
       UPLOAD_DIR: /data/uploads
+    ports:
+      # Loopback only - host nginx is the public edge, reverse-proxying here.
+      - "127.0.0.1:8000:8000"
     volumes:
       - chroma_data:/data/chroma
       - uploads_data:/data/uploads
@@ -20,31 +23,13 @@ services:
   frontend:
     image: ghcr.io/nandes007/knowledgehub-ai-frontend:${IMAGE_TAG:-latest}
     env_file: .env
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-
-  caddy:
-    image: docker.io/library/caddy:2-alpine
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - "127.0.0.1:3000:3000"
     depends_on:
       backend:
         condition: service_healthy
-      frontend:
-        condition: service_started
     restart: unless-stopped
 
 volumes:
   chroma_data:
   uploads_data:
-  caddy_data:
-  caddy_config:

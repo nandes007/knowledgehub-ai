@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: knowledgehub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/nandes007/knowledgehub-ai-backend:${IMAGE_TAG:-latest}
+    env_file: .env
+    environment:
+      # Container-topology values: not user config, so not sourced from .env.
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/knowledgehub
+      CHROMA_PERSIST_DIR: /data/chroma
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - chroma_data:/data/chroma
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/nandes007/knowledgehub-ai-frontend:${IMAGE_TAG:-latest}
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: docker.io/library/caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  chroma_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:

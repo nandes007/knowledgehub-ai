@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      # DATABASE_URL comes from .env (Supabase connection string).
+      # Container-topology values: not user config, so not sourced from .env.
+      CHROMA_PERSIST_DIR: /data/chroma
+      UPLOAD_DIR: /data/uploads
+    ports:
+      # Loopback only - host nginx is the public edge, reverse-proxying here.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - chroma_data:/data/chroma
+      - uploads_data:/data/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://knowledgehubai.nandes.tech}
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  uploads_data:

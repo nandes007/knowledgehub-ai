@@ -97,7 +97,9 @@ server {
 From your machine (podman):
 
 ```bash
-podman login ghcr.io -u <your-github-username>   # once, PAT with write:packages
+podman login ghcr.io -u <your-github-username>
+# Password prompt: paste a PAT (github.com/settings/tokens -> classic ->
+# write:packages scope), NOT your GitHub account password - that 403s.
 
 podman build -t ghcr.io/nandes007/knowledgehub-ai-backend:latest backend
 podman build -t ghcr.io/nandes007/knowledgehub-ai-frontend:latest frontend \

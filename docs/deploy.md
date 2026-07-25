@@ -19,6 +19,9 @@ Full architecture and rationale: [`deployment-plan.md`](deployment-plan.md).
       read-only PAT (so `podman-compose pull` can fetch images)
 - [ ] Create `~/knowledgehub-ai/.env` by hand — same keys as `.env.example`
       plus `DOMAIN=knowledgehubai.nandes.tech`; never commit this file
+- [ ] `DATABASE_URL` in that `.env` points at Supabase (`postgresql+psycopg://...`),
+      not a local container — Postgres isn't run on the VPS, so there's nothing
+      to provision or back up here (Supabase handles that)
 
 ## 2. DNS & TLS (once)
 

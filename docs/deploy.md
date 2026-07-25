@@ -32,14 +32,16 @@ manual — no CI workflow. Full architecture and rationale:
 
 ## 3. Deploy (every release)
 
-From your machine:
+From your machine (podman — same commands as Docker, `docker` → `podman`):
 
 ```bash
-docker build -t ghcr.io/nandes007/knowledgehub-ai-backend:latest backend
-docker build -t ghcr.io/nandes007/knowledgehub-ai-frontend:latest frontend \
+podman login ghcr.io -u <your-github-username>   # once, PAT with write:packages
+
+podman build -t ghcr.io/nandes007/knowledgehub-ai-backend:latest backend
+podman build -t ghcr.io/nandes007/knowledgehub-ai-frontend:latest frontend \
   --build-arg NEXT_PUBLIC_API_URL=https://knowledgehubai.nandes.tech
-docker push ghcr.io/nandes007/knowledgehub-ai-backend:latest
-docker push ghcr.io/nandes007/knowledgehub-ai-frontend:latest
+podman push ghcr.io/nandes007/knowledgehub-ai-backend:latest
+podman push ghcr.io/nandes007/knowledgehub-ai-frontend:latest
 
 scp docker-compose.prod.yml Caddyfile deploy@ssh.knowledgehubai.nandes.tech:~/knowledgehub-ai/
 ```

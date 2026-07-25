@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/nandes007/knowledgehub-ai-backend:${IMAGE_TAG:-latest}
+    build: ./backend
     env_file: .env
     environment:
       # DATABASE_URL comes from .env (Supabase connection string).
@@ -21,7 +21,10 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/nandes007/knowledgehub-ai-frontend:${IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://knowledgehubai.nandes.tech}
     env_file: .env
     ports:
       - "127.0.0.1:3000:3000"

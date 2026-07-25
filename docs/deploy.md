@@ -19,13 +19,14 @@ manual.)
 
 ## 1. Server (once)
 
-- [ ] Clone/copy the project to the server (same as roombooking)
-- [ ] `podman login ghcr.io` with a read-only PAT, so `podman-compose pull` works
+- [ ] Clone the project to the server (same as roombooking) — build context
+      needs the full repo, not just the compose file
 - [ ] Create `.env` in the project dir on the server by hand — same keys as
       `.env.example`; never commit this file
 - [ ] `DATABASE_URL` in that `.env` points at Supabase
       (`postgresql+psycopg://...`) — Postgres isn't run on this box
-- [ ] `podman-compose -f docker-compose.prod.yml up -d` (first run pulls images)
+- [ ] `podman-compose -f docker-compose.prod.yml up -d --build` (first run
+      builds both images locally on the server — no registry involved)
 
 ## 2. Host nginx
 
@@ -94,28 +95,12 @@ server {
 
 ## 4. Deploy (every release)
 
-From your machine (podman):
-
-```bash
-podman login ghcr.io -u <your-github-username>
-# Password prompt: paste a PAT (github.com/settings/tokens -> classic ->
-# write:packages scope), NOT your GitHub account password - that 403s.
-
-podman build -t ghcr.io/nandes007/knowledgehub-ai-backend:latest backend
-podman build -t ghcr.io/nandes007/knowledgehub-ai-frontend:latest frontend \
-  --build-arg NEXT_PUBLIC_API_URL=https://knowledgehubai.nandes.tech
-podman push ghcr.io/nandes007/knowledgehub-ai-backend:latest
-podman push ghcr.io/nandes007/knowledgehub-ai-frontend:latest
-
-scp docker-compose.prod.yml nandes@<server>:~/knowledgehub-ai/
-```
-
-Then on the server:
+On the server (same as roombooking — no local build/push, no registry):
 
 ```bash
 cd ~/knowledgehub-ai
-podman-compose -f docker-compose.prod.yml pull
-podman-compose -f docker-compose.prod.yml up -d
+git pull
+podman-compose -f docker-compose.prod.yml up -d --build
 curl -sf http://127.0.0.1:8000/healthz
 ```
 
@@ -129,8 +114,7 @@ curl -sf http://127.0.0.1:8000/healthz
 - `NEXT_PUBLIC_API_URL` is baked into the frontend image at build time (it's
   read by browser JS), so it must already be the final public URL — same
   domain, no separate API subdomain, so no CORS config needed either.
-- Rollback: build+push the previous commit's images tagged `latest` again
-  (or tag by SHA and set `IMAGE_TAG=<sha>` before `podman-compose ... up -d`
-  on the server), then re-run the deploy steps above.
+- Rollback: on the server, `git checkout <previous-sha>` then re-run
+  `podman-compose -f docker-compose.prod.yml up -d --build`.
 - Observability (#23) and hardening (#24) — rate limiting, security headers,
   backups, stats endpoint — are separate `/build` passes, not covered here.

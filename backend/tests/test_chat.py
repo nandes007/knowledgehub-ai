@@ -1,8 +1,11 @@
 import json
 import uuid
 
+from sqlmodel import Session, select
+
 from app.main import app
-from app.services.llm import get_llm_provider
+from app.models.message import Message
+from app.services.llm import TokenUsage, get_llm_provider
 from ingestion.chunk import chunk_markdown
 from ingestion.index import VectorStore, get_vector_store
 
@@ -14,7 +17,10 @@ class _FakeLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [_bag_of_words(t) for t in texts]
 
-    def generate_answer_stream(self, prompt: str):
+    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
+        if usage is not None:
+            usage.prompt_tokens = 100
+            usage.completion_tokens = 8
         yield from _ANSWER_TOKENS
 
 
@@ -22,7 +28,7 @@ class _FailingFakeLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [_bag_of_words(t) for t in texts]
 
-    def generate_answer_stream(self, prompt: str):
+    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
         yield "Emplo"
         raise RuntimeError("upstream LLM timed out")
 
@@ -34,7 +40,7 @@ class _RecordingLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [_bag_of_words(t) for t in texts]
 
-    def generate_answer_stream(self, prompt: str):
+    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
         self.prompts.append(prompt)
         yield "20 days"
 
@@ -111,6 +117,25 @@ def test_chat_persists_user_and_assistant_messages(client, tmp_path, test_user_i
     assert messages[0]["content"] == "How many vacation days do I get?"
     assert messages[1]["content"] == "".join(_ANSWER_TOKENS)
     assert messages[1]["sources"][0]["filename"] == "policy.md"
+
+
+def test_chat_stores_token_count_on_assistant_message(client, tmp_path, test_user_id, db_engine):
+    _override(_FakeLLM())
+    _override_store(_seeded_store(tmp_path, test_user_id))
+    try:
+        response = client.post("/chat", json={"message": "How many vacation days do I get?"})
+    finally:
+        _clear_overrides()
+
+    conversation_id = uuid.UUID(_parse_sse_events(response.text)[-1][1]["conversation_id"])
+
+    with Session(db_engine) as session:
+        assistant_message = session.exec(
+            select(Message)
+            .where(Message.conversation_id == conversation_id, Message.role == "assistant")
+        ).one()
+
+    assert assistant_message.token_count == 108
 
 
 def test_chat_includes_history_in_the_prompt_for_follow_ups(client, tmp_path, test_user_id):

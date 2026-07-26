@@ -12,7 +12,7 @@ from app.deps import CurrentUserDep
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.chat import ChatRequest
-from app.services.llm import LLMProvider, get_llm_provider
+from app.services.llm import LLMProvider, TokenUsage, get_llm_provider
 from app.services.rag import stream_answer
 from ingestion.index import VectorStore, get_vector_store
 
@@ -58,6 +58,7 @@ def _event_stream(
     conversation_id: uuid.UUID,
     tokens: Iterator[str],
     sources: list[dict],
+    usage: TokenUsage,
 ) -> Iterator[str]:
     answer_parts: list[str] = []
     try:
@@ -70,6 +71,10 @@ def _event_stream(
         yield _sse("error", {"message": str(exc)})
         return
 
+    token_count = None
+    if usage.prompt_tokens is not None and usage.completion_tokens is not None:
+        token_count = usage.prompt_tokens + usage.completion_tokens
+
     # A fresh session, not the route's SessionDep - the injected dependency
     # is torn down once the route function returns, before this generator's
     # body (which runs while Starlette streams the response) executes.
@@ -79,6 +84,7 @@ def _event_stream(
             role="assistant",
             content="".join(answer_parts),
             sources=sources,
+            token_count=token_count,
         )
         session.add(message)
         session.commit()
@@ -106,7 +112,7 @@ def chat(
         session.commit()
         conversation_id = conversation.id
 
-    tokens, sources = stream_answer(
+    tokens, sources, usage = stream_answer(
         request.message,
         user_id=str(current_user.id),
         llm=llm,
@@ -114,6 +120,6 @@ def chat(
         history=history,
     )
     return StreamingResponse(
-        _event_stream(engine, conversation_id, tokens, sources),
+        _event_stream(engine, conversation_id, tokens, sources, usage),
         media_type="text/event-stream",
     )

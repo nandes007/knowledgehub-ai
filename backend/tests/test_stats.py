@@ -1,0 +1,51 @@
+import uuid
+
+from sqlmodel import Session
+
+from app.models.document import Document
+from app.models.message import Message
+from app.models.user import User
+
+
+def _make_admin(db_engine, user_id: uuid.UUID) -> None:
+    with Session(db_engine) as session:
+        user = session.get(User, user_id)
+        user.role = "admin"
+        session.add(user)
+        session.commit()
+
+
+def test_stats_requires_admin_role(client):
+    response = client.get("/stats")
+
+    assert response.status_code == 403
+
+
+def test_stats_returns_message_counts_doc_count_and_estimated_cost(client, db_engine, test_user_id):
+    _make_admin(db_engine, test_user_id)
+
+    conversation_id = uuid.UUID(client.post("/conversations").json()["id"])
+
+    with Session(db_engine) as session:
+        session.add(Message(conversation_id=conversation_id, role="user", content="hi"))
+        session.add(
+            Message(conversation_id=conversation_id, role="assistant", content="hello", token_count=1000)
+        )
+        session.add(
+            Document(
+                user_id=test_user_id,
+                filename="a.md",
+                content_type="text/markdown",
+                file_path="/tmp/a.md",
+                file_hash="hash1",
+            )
+        )
+        session.commit()
+
+    response = client.get("/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_count"] == 1
+    assert sum(day["count"] for day in body["messages_per_day"]) == 2
+    assert body["estimated_cost_usd"] == 0.0003

@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from app.services.llm import LLMProvider
+from app.services.llm import LLMProvider, TokenUsage
 from ingestion.index import VectorStore
 
 _TOP_K = 5
@@ -27,7 +27,7 @@ def stream_answer(
     llm: LLMProvider,
     vector_store: VectorStore,
     history: list[dict[str, str]] | None = None,
-) -> tuple[Iterator[str], list[dict]]:
+) -> tuple[Iterator[str], list[dict], TokenUsage]:
     query_embedding = llm.embed_texts([question])[0]
     matches = vector_store.query(query_embedding, top_k=_TOP_K, where={"user_id": user_id})
 
@@ -47,4 +47,5 @@ def stream_answer(
         }
         for m in matches
     ]
-    return llm.generate_answer_stream(prompt), sources
+    usage = TokenUsage()
+    return llm.generate_answer_stream(prompt, usage=usage), sources, usage

@@ -35,7 +35,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 ## Phase 5: Production
 - [x] [20 Dockerize](20-dockerize.md) — [#21](https://github.com/nandes007/knowledgehub-ai/issues/21)
 - [ ] [21 Deploy](21-deploy.md) — [#22](https://github.com/nandes007/knowledgehub-ai/issues/22)
-- [ ] [22 Observability](22-observability.md) — [#23](https://github.com/nandes007/knowledgehub-ai/issues/23)
+- [x] [22 Observability](22-observability.md) — [#23](https://github.com/nandes007/knowledgehub-ai/issues/23)
 - [ ] [23 Hardening](23-hardening.md) — [#24](https://github.com/nandes007/knowledgehub-ai/issues/24)
 - [ ] [24 Portfolio README → tag v1.0.0](24-portfolio-readme-v100.md) — [#25](https://github.com/nandes007/knowledgehub-ai/issues/25) ← MVP 🎉
 

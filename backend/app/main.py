@@ -1,16 +1,22 @@
+import logging
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import models  # noqa: F401 - registers tables on SQLModel.metadata
 from app.config import settings
 from app.db import create_db_and_tables
+from app.logging_config import configure_logging
 from app.routers.auth import router as auth_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
 from app.routers.documents import router as documents_router
+from app.routers.stats import router as stats_router
+
+_access_logger = logging.getLogger("app.access")
 
 
 @asynccontextmanager
@@ -20,6 +26,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
+
     app = FastAPI(title="KnowledgeHub AI", lifespan=lifespan)
 
     app.add_middleware(
@@ -30,6 +38,22 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        _access_logger.info(
+            "request",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            },
+        )
+        return response
+
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
@@ -38,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(conversations_router)
     app.include_router(documents_router)
+    app.include_router(stats_router)
 
     return app
 

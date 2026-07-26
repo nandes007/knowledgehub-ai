@@ -2,7 +2,7 @@ import json
 import uuid
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Engine
 from sqlmodel import Session, select
@@ -11,6 +11,7 @@ from app.db import get_engine
 from app.deps import CurrentUserDep
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.rate_limit import limiter
 from app.schemas.chat import ChatRequest
 from app.services.llm import LLMProvider, TokenUsage, get_llm_provider
 from app.services.rag import stream_answer
@@ -98,22 +99,24 @@ def _event_stream(
 
 
 @router.post("/chat")
+@limiter.limit("20/minute")
 def chat(
-    request: ChatRequest,
+    request: Request,
+    payload: ChatRequest,
     current_user: CurrentUserDep,
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
     engine: Engine = Depends(get_engine),
 ) -> StreamingResponse:
     with Session(engine) as session:
-        conversation = _get_or_create_conversation(session, request.conversation_id, current_user.id)
+        conversation = _get_or_create_conversation(session, payload.conversation_id, current_user.id)
         history = _recent_history(session, conversation.id, _HISTORY_LIMIT)
-        session.add(Message(conversation_id=conversation.id, role="user", content=request.message))
+        session.add(Message(conversation_id=conversation.id, role="user", content=payload.message))
         session.commit()
         conversation_id = conversation.id
 
     tokens, sources, usage = stream_answer(
-        request.message,
+        payload.message,
         user_id=str(current_user.id),
         llm=llm,
         vector_store=vector_store,

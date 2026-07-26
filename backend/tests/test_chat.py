@@ -197,3 +197,14 @@ def test_chat_requires_a_message(client, tmp_path, test_user_id):
         _clear_overrides()
 
     assert response.status_code == 422
+
+
+def test_chat_rejects_a_message_over_the_length_limit(client, tmp_path, test_user_id):
+    _override(_FakeLLM())
+    _override_store(_seeded_store(tmp_path, test_user_id))
+    try:
+        response = client.post("/chat", json={"message": "x" * 4001})
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 422

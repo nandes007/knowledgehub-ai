@@ -6,13 +6,13 @@
 **Description:** Rate limiting (`slowapi`) on chat + upload, input length limits, strict CORS, security headers, confirm secrets only in env, DB backup note.
 
 **Acceptance criteria:**
-- [ ] `/chat` and `/documents` rate-limited per user/IP
-- [ ] Message length + file size limits enforced
-- [ ] Strict CORS origins; security headers set
-- [ ] Backup approach documented (even if just a pg_dump cron note)
+- [x] `/chat` and `/documents` rate-limited per user/IP
+- [x] Message length + file size limits enforced
+- [x] Strict CORS origins; security headers set
+- [x] Backup approach documented (even if just a pg_dump cron note)
 
 **Verification:**
-- [ ] Hammering `/chat` in a loop gets 429s, not a huge bill
+- [x] Hammering `/chat` in a loop gets 429s, not a huge bill
 
 **Dependencies:** Task 22
 

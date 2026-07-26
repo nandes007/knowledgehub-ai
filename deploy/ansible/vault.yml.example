@@ -1,0 +1,13 @@
+# Copy to vault.yml, fill in, then encrypt:
+#   cp vault.yml.example vault.yml && $EDITOR vault.yml
+#   ansible-vault encrypt vault.yml
+# Run plays with --ask-vault-pass.
+
+# Supabase DIRECT connection (not the pooler - the pooler is IPv4-only).
+# Note the +psycopg driver and sslmode=require.
+supabase_db_url: "postgresql+psycopg://postgres:PASSWORD@db.REF.supabase.co:5432/postgres?sslmode=require"
+
+openai_api_key: "sk-..."
+
+# openssl rand -hex 32  - do not reuse the dev value.
+jwt_secret: "CHANGEME"

@@ -1,0 +1,386 @@
+---
+# KnowledgeHub AI deployment. See docs/deployment-plan.md for the why.
+#
+#   ansible-playbook -i inventory.yml site.yml --ask-vault-pass
+#
+# First run connects as root. After bootstrap disables root SSH, re-runs need:
+#   ansible-playbook -i inventory.yml site.yml --ask-vault-pass -e bootstrap_user=nandes
+
+- name: Bootstrap the server
+  hosts: knowledgehub
+  remote_user: "{{ bootstrap_user | default('root') }}"
+  become: true
+  tags: bootstrap
+  # A play that fails mid-way still applies the handlers it already notified.
+  # Without this, a late failure leaves e.g. sshd hardening written but never
+  # loaded - and the next run sees an unchanged file, so it never notifies again.
+  force_handlers: true
+
+  tasks:
+    - name: Upgrade base system
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: safe
+        cache_valid_time: 3600
+
+    # An IPv6-only host cannot reach IPv4-only services, and Docker Hub
+    # (registry-1.docker.io) is IPv4-only - every image pull would hang.
+    # DNS64 + the operator's NAT64 gateway makes them reachable transparently.
+    - name: Ensure resolved drop-in directory exists
+      when: dns64_enabled | bool
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Point systemd-resolved at a DNS64 resolver
+      when: dns64_enabled | bool
+      notify: Restart resolved
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/dns64.conf
+        mode: "0644"
+        content: |
+          [Resolve]
+          # nat64.net - DNS64 resolvers paired with public NAT64 gateways.
+          # Google's DNS64 (2001:4860:4860::6464) is deliberately NOT used: it
+          # synthesises 64:ff9b:: addresses assuming you run your own NAT64
+          # gateway. This host has none, so IPv4-only endpoints (api.openai.com)
+          # resolve fine and then time out. Never mix the two - a synthesised
+          # address is only reachable via its own operator's gateway.
+          DNS=2a00:1098:2b::1 2a00:1098:2c::1 2a01:4f8:c2c:123f::1
+          Domains=~.
+
+    - name: Apply resolver change now
+      ansible.builtin.meta: flush_handlers
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name:
+          - podman
+          - podman-compose
+          - uidmap
+          - slirp4netns
+          - fuse-overlayfs
+          - nginx
+          - rsync
+        state: present
+
+    - name: Create the deploy user
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+
+    - name: Authorise your SSH key for it
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('file', ssh_pubkey_file) }}"
+
+    # The account has no password, so plain sudo could never succeed. NOPASSWD
+    # keeps later plays (nginx, systemd) runnable unattended.
+    - name: Passwordless sudo for the deploy user
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/{{ deploy_user }}
+        mode: "0440"
+        validate: visudo -cf %s
+        content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL\n"
+
+    # Without lingering, systemd kills the user session - and every rootless
+    # container in it - the moment the SSH connection closes.
+    - name: Enable lingering so containers survive logout and reboot
+      ansible.builtin.command: loginctl enable-linger {{ deploy_user }}
+      changed_when: false
+
+    - name: Allow SSH, HTTP, HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: ["22", "80", "443"]
+
+    - name: Enable the firewall
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: Harden sshd
+      notify: Restart sshd
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/99-hardening.conf
+        mode: "0644"
+        content: |
+          PermitRootLogin no
+          PasswordAuthentication no
+
+    - name: Create swap file
+      ansible.builtin.command:
+        cmd: fallocate -l 2G /swapfile
+        creates: /swapfile
+      register: swap_created
+
+    - name: Format and enable swap
+      when: swap_created is changed
+      ansible.builtin.shell: |
+        chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+
+    - name: Persist swap
+      ansible.posix.mount:
+        path: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
+
+    # Fail here rather than 15 minutes into a build that cannot pull its base image.
+    - name: Check every host the build depends on is reachable
+      ansible.builtin.command: curl -sSI --max-time 15 https://{{ item }}
+      changed_when: false
+      loop:
+        - registry-1.docker.io/v2/
+        - pypi.org
+        - registry.npmjs.org
+        - api.openai.com
+
+  handlers:
+    - name: Restart resolved
+      ansible.builtin.service:
+        name: systemd-resolved
+        state: restarted
+
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+
+
+- name: Deploy the application
+  hosts: knowledgehub
+  # Connect AS the deploy user. Rootless podman and `systemctl --user` need a real
+  # login session; reaching them via `become_user` loses XDG_RUNTIME_DIR and breaks both.
+  remote_user: "{{ deploy_user }}"
+  vars_files:
+    - vault.yml
+
+  tasks:
+    - name: Package the committed tree
+      # Ships HEAD, not the working tree - and avoids needing a deploy key or PAT
+      # on the server for a private repo.
+      delegate_to: localhost
+      changed_when: true
+      ansible.builtin.command:
+        chdir: "{{ playbook_dir }}/.."
+        cmd: git archive --format=tar.gz -o /tmp/knowledgehub.tar.gz HEAD
+
+    - name: Ensure the app directory exists
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ship it to the server
+      ansible.builtin.unarchive:
+        src: /tmp/knowledgehub.tar.gz
+        dest: "{{ app_dir }}"
+
+    - name: Write .env
+      ansible.builtin.template:
+        src: env.j2
+        dest: "{{ app_dir }}/.env"
+        mode: "0600"
+
+    - name: Build images
+      # 5-15 minutes on the first run: base image pulls plus the Next.js build.
+      # Run detached and poll: the build then survives an SSH drop, because each
+      # poll is its own short-lived connection rather than one long idle one.
+      async: 3600
+      poll: 15
+      changed_when: true
+      ansible.builtin.command:
+        chdir: "{{ app_dir }}"
+        cmd: podman-compose -f docker-compose.prod.yml build
+
+    - name: Ensure the systemd user unit directory exists
+      ansible.builtin.file:
+        path: ~/.config/systemd/user
+        state: directory
+        mode: "0755"
+
+    - name: Install the systemd user unit
+      # compose's `restart: unless-stopped` restarts a crashed container but does
+      # not bring the stack back after a host reboot. This does.
+      ansible.builtin.copy:
+        dest: "~/.config/systemd/user/knowledgehub.service"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=KnowledgeHub AI
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          WorkingDirectory={{ app_dir }}
+          ExecStart=/usr/bin/podman-compose -f docker-compose.prod.yml up -d
+          ExecStop=/usr/bin/podman-compose -f docker-compose.prod.yml down
+          TimeoutStartSec=0
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Start the stack
+      # Always restarted, never merely "started": the unit is Type=oneshot with
+      # RemainAfterExit, so systemd considers it active forever and a `started`
+      # would silently no-op - shipping a new compose file or image while the old
+      # containers keep running.
+      environment:
+        XDG_RUNTIME_DIR: /run/user/{{ ansible_facts['user_uid'] }}
+      ansible.builtin.systemd_service:
+        name: knowledgehub
+        scope: user
+        daemon_reload: true
+        enabled: true
+        state: restarted
+
+    # A failed health check on its own says nothing useful - rootless podman's
+    # port forwarder accepts and resets, so the real reason is only in the logs.
+    - name: Wait for the backend to answer
+      block:
+        - name: Poll /healthz
+          ansible.builtin.uri:
+            url: http://127.0.0.1:8000/healthz
+          register: health
+          until: health.status == 200
+          retries: 30
+          delay: 5
+      rescue:
+        - name: Collect backend logs
+          changed_when: false
+          failed_when: false
+          ansible.builtin.command:
+            chdir: "{{ app_dir }}"
+            cmd: podman-compose -f docker-compose.prod.yml logs --tail 60 backend
+          register: backend_logs
+
+        - name: Report why the backend is down
+          ansible.builtin.fail:
+            msg: "{{ backend_logs.stdout_lines | default([]) + backend_logs.stderr_lines | default([]) }}"
+
+    - name: Wait for the frontend to answer
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000
+      register: fe
+      until: fe.status == 200
+      retries: 30
+      delay: 5
+
+    # Cloudflare Origin certificate: created once in the dashboard
+    # (SSL/TLS -> Origin Server), pasted into deploy/certs/. Not automated -
+    # it is a 15-year cert with no renewal to schedule.
+    - name: Check the origin cert is present locally
+      ansible.builtin.assert:
+        that:
+          - (playbook_dir ~ '/certs/origin.pem') is exists
+          - (playbook_dir ~ '/certs/origin.key') is exists
+        fail_msg: >-
+          Create a Cloudflare Origin certificate (SSL/TLS -> Origin Server) and save
+          the two PEM blocks as deploy/certs/origin.pem and deploy/certs/origin.key.
+
+    - name: Ensure the cert directory exists
+      become: true
+      ansible.builtin.file:
+        path: /etc/ssl/cloudflare
+        state: directory
+        mode: "0700"
+
+    - name: Install the origin certificate
+      become: true
+      notify: Reload nginx
+      ansible.builtin.copy:
+        src: certs/{{ item.name }}
+        dest: /etc/ssl/cloudflare/{{ item.name }}
+        mode: "{{ item.mode }}"
+      loop:
+        - {name: origin.pem, mode: "0644"}
+        - {name: origin.key, mode: "0600"}
+
+    - name: Configure nginx
+      become: true
+      notify: Reload nginx
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/knowledgehub
+        mode: "0644"
+        content: |
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name {{ domain }};
+              return 301 https://$host$request_uri;
+          }
+
+          server {
+              # http2 as a listen parameter, not the `http2 on;` directive:
+              # that directive needs nginx >= 1.25.1 and Ubuntu 24.04 ships 1.24.
+              listen 443 ssl http2;
+              listen [::]:443 ssl http2;
+              server_name {{ domain }};
+
+              ssl_certificate     /etc/ssl/cloudflare/origin.pem;
+              ssl_certificate_key /etc/ssl/cloudflare/origin.key;
+
+              # Must be >= MAX_UPLOAD_SIZE_MB or nginx 413s before the app answers.
+              client_max_body_size 25m;
+
+              # Trailing slash strips the prefix: /api/auth/login -> /auth/login
+              location /api/ {
+                  proxy_pass http://127.0.0.1:8000/;
+                  proxy_set_header Host              $host;
+                  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto https;
+
+                  # /chat is an SSE stream; buffering would deliver it in one lump.
+                  proxy_buffering off;
+                  proxy_cache off;
+                  proxy_read_timeout 300s;
+              }
+
+              location / {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host              $host;
+                  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto https;
+                  proxy_set_header Upgrade           $http_upgrade;
+                  proxy_set_header Connection        "upgrade";
+              }
+          }
+
+    - name: Enable the site
+      become: true
+      notify: Reload nginx
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/knowledgehub
+        dest: /etc/nginx/sites-enabled/knowledgehub
+        state: link
+
+    - name: Remove the default site
+      become: true
+      notify: Reload nginx
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    # A failing handler only reports "Job for nginx.service failed". This surfaces
+    # the actual line nginx objects to, before the reload is attempted.
+    - name: Validate nginx config
+      become: true
+      changed_when: false
+      ansible.builtin.command: nginx -t
+
+  handlers:
+    - name: Reload nginx
+      become: true
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

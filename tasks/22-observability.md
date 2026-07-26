@@ -6,12 +6,12 @@
 **Description:** Structured JSON logging, log every LLM call with model + token counts, simple admin stats endpoint (messages/day, docs, estimated cost).
 
 **Acceptance criteria:**
-- [ ] JSON logs with request context
-- [ ] Every LLM call logged with model + prompt/completion tokens
-- [ ] Stats endpoint returns messages/day, doc count, estimated cost
+- [x] JSON logs with request context
+- [x] Every LLM call logged with model + prompt/completion tokens
+- [x] Stats endpoint returns messages/day, doc count, estimated cost
 
 **Verification:**
-- [ ] You can answer "what did yesterday cost?" from logs/endpoint
+- [x] You can answer "what did yesterday cost?" from logs/endpoint
 
 **Dependencies:** Task 21
 

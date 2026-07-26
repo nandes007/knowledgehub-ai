@@ -293,12 +293,12 @@ Then: delete a file's vectors with `where={"document_id": ...}`; re-ingest = del
 
 ## 7. Definition of "Production Ready" (release checklist)
 
-- [ ] Live HTTPS URL, uptime through a full demo
-- [ ] Auth on every route, per-user data isolation verified
-- [ ] Upload → ingest → cited answer loop works for PDF, DOCX, PPTX, MD
-- [ ] No full-collection rebuilds anywhere; delete removes vectors
-- [ ] Graceful errors for every failure mode tested in Day 19
-- [ ] Rate limiting + input limits on all expensive endpoints
-- [ ] Logs answer "what happened and what did it cost?"
-- [ ] `docker compose up` works from a fresh clone
-- [ ] README + architecture doc + eval results complete
+- [x] Live HTTPS URL, uptime through a full demo — `https://knowledgehubai.nandes.tech` (frontend + `/healthz` both verified 200 as of the v1.0.0 tag)
+- [x] Auth on every route, per-user data isolation verified — `backend/tests/test_auth.py`
+- [x] Upload → ingest → cited answer loop works for PDF, DOCX, PPTX, MD — verified at Task 15's checkpoint; format parsing via MarkItDown, extension allowlist enforced at upload
+- [x] No full-collection rebuilds anywhere; delete removes vectors — per-file upsert/delete by deterministic chunk ID, see `docs/architecture.md`
+- [x] Graceful errors for every failure mode tested in Day 19 — `backend/tests/test_documents.py`, `test_convert.py`, `test_pipeline.py`
+- [x] Rate limiting + input limits on all expensive endpoints — Task 23
+- [x] Logs answer "what happened and what did it cost?" — Task 22 (JSON logs + `/stats`)
+- [x] `docker compose up` works from a fresh clone — verified at Task 20's checkpoint
+- [ ] README + architecture doc + eval results complete — README and architecture doc are done; eval results are Phase 7 (Tasks 25–28), scheduled *after* this v1.0.0 tag per the day-by-day plan, not before it

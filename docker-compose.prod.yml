@@ -7,9 +7,19 @@ services:
       # Container-topology values: not user config, so not sourced from .env.
       CHROMA_PERSIST_DIR: /data/chroma
       UPLOAD_DIR: /data/uploads
-    ports:
-      # Loopback only - host nginx is the public edge, reverse-proxying here.
-      - "127.0.0.1:8000:8000"
+    # The host is IPv6-only, and rootless podman's default slirp4netns network is
+    # IPv4-only - so a container on it can reach neither Supabase nor the OpenAI
+    # API ("Network is unreachable"). Host networking gives the backend the host's
+    # own IPv6 stack. `ports` does not apply here; uvicorn binds loopback itself
+    # below, so this is still reachable only via host nginx.
+    network_mode: host
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "127.0.0.1"
+      - --port
+      - "8000"
     volumes:
       - chroma_data:/data/chroma
       - uploads_data:/data/uploads
@@ -24,7 +34,10 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://knowledgehubai.nandes.tech}
+        # Same origin as the site: host nginx serves the app at / and proxies
+        # /api/* to the backend with the prefix stripped. Baked in at build time
+        # (NEXT_PUBLIC_*), so a change here needs a rebuild, not just a restart.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://knowledgehubai.nandes.tech/api}
     env_file: .env
     ports:
       - "127.0.0.1:3000:3000"

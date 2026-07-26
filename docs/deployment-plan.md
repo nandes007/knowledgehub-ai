@@ -57,11 +57,11 @@ de-risk it, and it should be done *before* anything else is installed. Read it n
 
 ## Automated route — Ansible from your laptop
 
-`deploy/site.yml` implements Phases 1, 3, 4, 6, 7, 8 and 9. The phases below remain the reference
-(and the manual fallback); run either.
+`deploy/ansible/site.yml` implements Phases 1, 3, 4, 6, 7, 8 and 9. The phases below remain the
+reference (and the manual fallback); run either.
 
 ```bash
-cd deploy
+cd deploy/ansible
 $EDITOR inventory.yml                      # server IPv6 address
 cp vault.yml.example vault.yml && $EDITOR vault.yml
 ansible-vault encrypt vault.yml
@@ -74,7 +74,7 @@ ansible-playbook -i inventory.yml site.yml --ask-vault-pass
 
 - Phase 2, Cloudflare DNS (AAAA, proxied) and SSL mode Full (strict)
 - Phase 8.1, creating the Origin certificate (the playbook installs it, and asserts loudly if
-  `certs/` is empty)
+  `deploy/ansible/certs/` is empty)
 - Phase 5, creating the Supabase project
 - Phase 10, the end-to-end verification clicks
 

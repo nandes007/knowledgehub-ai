@@ -276,7 +276,7 @@
       delay: 5
 
     # Cloudflare Origin certificate: created once in the dashboard
-    # (SSL/TLS -> Origin Server), pasted into deploy/certs/. Not automated -
+    # (SSL/TLS -> Origin Server), pasted into deploy/ansible/certs/. Not automated -
     # it is a 15-year cert with no renewal to schedule.
     - name: Check the origin cert is present locally
       ansible.builtin.assert:
@@ -285,7 +285,8 @@
           - (playbook_dir ~ '/certs/origin.key') is exists
         fail_msg: >-
           Create a Cloudflare Origin certificate (SSL/TLS -> Origin Server) and save
-          the two PEM blocks as deploy/certs/origin.pem and deploy/certs/origin.key.
+          the two PEM blocks as deploy/ansible/certs/origin.pem and
+          deploy/ansible/certs/origin.key.
 
     - name: Ensure the cert directory exists
       become: true

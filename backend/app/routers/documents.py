@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import Engine
 from sqlmodel import select
 
@@ -10,6 +10,7 @@ from app.config import settings
 from app.db import get_engine
 from app.deps import CurrentUserDep, SessionDep
 from app.models.document import Document
+from app.rate_limit import limiter
 from app.schemas.document import DocumentRead, DocumentSummary
 from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
@@ -21,7 +22,9 @@ _SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md"}
 
 
 @router.post("/documents", response_model=DocumentRead, status_code=202)
+@limiter.limit("10/minute")
 async def upload_document(
+    request: Request,
     background_tasks: BackgroundTasks,
     session: SessionDep,
     current_user: CurrentUserDep,

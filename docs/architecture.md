@@ -28,6 +28,27 @@ Vector store convention (Chroma): every chunk gets a deterministic ID
 `{document_id}::{chunk_index}::{content_hash[:12]}` with metadata
 `{document_id, user_id, filename, doc_type, department, h1, h2}`. Re-ingesting a file is delete-then-upsert scoped to that file's `document_id` — the whole collection is never rebuilt.
 
+## Backups
+
+Postgres runs on Supabase (`DATABASE_URL` in `deploy/ansible/env.j2`), which
+takes daily automated backups on paid plans. That covers `users`,
+`conversations`, `messages`, `documents` — the source of truth. As a
+belt-and-suspenders fallback (and the only option on Supabase's free tier,
+which has no automated backups), a host cron entry does a nightly logical dump:
+
+```cron
+0 3 * * * pg_dump "$DATABASE_URL" | gzip > /var/backups/knowledgehub/$(date +\%F).sql.gz
+```
+
+Uploaded source files (`uploads_data` volume) are the input to ingestion and
+should be backed up the same way (e.g. a nightly `tar`/rsync off-host) - losing
+them means re-uploading, not just re-processing.
+
+The Chroma vector store (`chroma_data` volume) is *not* backed up
+independently: it's fully derivable by re-ingesting the documents already
+backed up above, so restoring it is "re-run ingestion," not "restore from
+snapshot."
+
 ## Design decisions
 
 Captured as they're made; the full writeup lands in Task 24 (portfolio README).

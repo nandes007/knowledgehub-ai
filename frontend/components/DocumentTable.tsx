@@ -1,15 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { deleteDocument, listDocuments, type Document, type DocumentStatus } from "@/lib/api";
+import { deleteDocument, listDocuments, type Document } from "@/lib/api";
+import { StatusStamp } from "@/components/ui";
 
 const POLL_INTERVAL_MS = 4000;
-
-const STATUS_STYLES: Record<DocumentStatus, string> = {
-  processing: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  ready: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  failed: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -55,54 +50,54 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
   }
 
   if (loadError) {
-    return <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>;
+    return <p className="text-sm text-stamp-void">{loadError}</p>;
   }
   if (documents === null) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>;
+    return <p className="text-sm text-ink-muted">Loading…</p>;
   }
   if (documents.length === 0) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">No documents yet. Upload one above.</p>;
+    return <p className="text-sm text-ink-muted">No documents yet. Upload one above.</p>;
   }
 
   return (
     <div>
-      {deleteError && <p className="mb-2 text-sm text-red-600 dark:text-red-400">{deleteError}</p>}
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-            <th className="py-2 pr-4 font-medium">Filename</th>
-            <th className="py-2 pr-4 font-medium">Status</th>
-            <th className="py-2 pr-4 font-medium">Uploaded</th>
-            <th className="py-2 font-medium" aria-hidden />
-          </tr>
-        </thead>
-        <tbody>
-          {documents.map((doc) => (
-            <tr key={doc.id} className="border-b border-zinc-100 dark:border-zinc-900">
-              <td className="max-w-xs truncate py-2 pr-4">{doc.filename}</td>
-              <td className="py-2 pr-4">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[doc.status]}`}>
-                  {doc.status}
-                </span>
-                {doc.status === "failed" && doc.errorMessage && (
-                  <p className="mt-1 max-w-xs text-xs text-red-600 dark:text-red-400">{doc.errorMessage}</p>
-                )}
-              </td>
-              <td className="py-2 pr-4 text-zinc-500 dark:text-zinc-400">{formatDate(doc.createdAt)}</td>
-              <td className="py-2 text-right">
-                <button
-                  type="button"
-                  onClick={() => handleDelete(doc.id, doc.filename)}
-                  disabled={deletingId === doc.id}
-                  className="text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
-                >
-                  {deletingId === doc.id ? "Deleting…" : "Delete"}
-                </button>
-              </td>
+      {deleteError && <p className="mb-2 text-sm text-stamp-void">{deleteError}</p>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-rule text-ink-muted">
+              <th className="py-2 pr-4 font-medium">Filename</th>
+              <th className="py-2 pr-4 font-medium">Status</th>
+              <th className="py-2 pr-4 font-medium">Uploaded</th>
+              <th className="py-2 font-medium" aria-hidden />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {documents.map((doc) => (
+              <tr key={doc.id} className="border-b border-rule">
+                <td className="max-w-xs truncate py-2 pr-4">{doc.filename}</td>
+                <td className="py-2 pr-4">
+                  <StatusStamp status={doc.status} />
+                  {doc.status === "failed" && doc.errorMessage && (
+                    <p className="mt-1 max-w-xs text-xs text-stamp-void">{doc.errorMessage}</p>
+                  )}
+                </td>
+                <td className="py-2 pr-4 font-mono text-xs text-ink-muted">{formatDate(doc.createdAt)}</td>
+                <td className="py-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(doc.id, doc.filename)}
+                    disabled={deletingId === doc.id}
+                    className="rounded-sm text-stamp-void hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:opacity-50"
+                  >
+                    {deletingId === doc.id ? "Deleting…" : "Delete"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

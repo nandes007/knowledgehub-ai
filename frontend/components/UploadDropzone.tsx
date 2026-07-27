@@ -44,10 +44,8 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") inputRef.current?.click();
       }}
-      className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center text-sm transition-colors ${
-        isDragging
-          ? "border-zinc-400 bg-zinc-100 dark:border-zinc-500 dark:bg-zinc-900"
-          : "border-zinc-300 text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
+      className={`cursor-pointer rounded-sm border-2 border-dashed p-8 text-center text-sm transition-colors ${
+        isDragging ? "border-brass bg-brass/10 text-ink" : "border-rule text-ink-muted hover:border-brass/60"
       }`}
     >
       <input
@@ -62,7 +60,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
         }}
       />
       {isUploading ? "Uploading…" : "Drag and drop files here, or click to browse (PDF, DOCX, PPTX, MD)"}
-      {error && <p className="mt-2 text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-stamp-void">{error}</p>}
     </div>
   );
 }

@@ -6,12 +6,16 @@ export function SourceList({ sources }: { sources: Source[] }) {
   return (
     <ul className="mt-2 flex flex-wrap gap-1.5">
       {sources.map((source, index) => (
-        <li key={`${source.document_id}-${index}`}>
+        <li
+          key={`${source.document_id}-${index}`}
+          className="animate-stamp-in"
+          style={{ animationDelay: `${index * 60}ms` }}
+        >
           <details>
-            <summary className="cursor-pointer list-none rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600">
+            <summary className="cursor-pointer list-none rounded-[2px] border border-brass/50 bg-paper px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-brass-strong hover:bg-brass/10">
               {source.filename}
             </summary>
-            <p className="mt-1 max-w-xs rounded-lg bg-zinc-50 p-2 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+            <p className="mt-1 max-w-xs rounded-sm border border-rule bg-paper p-2 text-xs text-ink-muted">
               {source.chunk_preview}
             </p>
           </details>

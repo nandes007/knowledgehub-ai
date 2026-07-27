@@ -167,11 +167,14 @@
     - name: Package the committed tree
       # Ships HEAD, not the working tree - and avoids needing a deploy key or PAT
       # on the server for a private repo.
+      # `git archive` is relative to the cwd, so this must run at the repo root -
+      # asking git for it rather than counting ../ keeps it correct if the
+      # playbook moves again. It silently shipped only deploy/ when it didn't.
       delegate_to: localhost
       changed_when: true
-      ansible.builtin.command:
-        chdir: "{{ playbook_dir }}/.."
-        cmd: git archive --format=tar.gz -o /tmp/knowledgehub.tar.gz HEAD
+      ansible.builtin.shell:
+        chdir: "{{ playbook_dir }}"
+        cmd: cd "$(git rev-parse --show-toplevel)" && git archive --format=tar.gz -o /tmp/knowledgehub.tar.gz HEAD
 
     - name: Ensure the app directory exists
       ansible.builtin.file:
@@ -222,7 +225,10 @@
           Type=oneshot
           RemainAfterExit=yes
           WorkingDirectory={{ app_dir }}
-          ExecStart=/usr/bin/podman-compose -f docker-compose.prod.yml up -d
+          # --force-recreate because podman-compose only checks whether a container
+          # by that name exists, not whether its image changed - so a freshly built
+          # image is silently ignored and the old container keeps running.
+          ExecStart=/usr/bin/podman-compose -f docker-compose.prod.yml up -d --force-recreate
           ExecStop=/usr/bin/podman-compose -f docker-compose.prod.yml down
           TimeoutStartSec=0
 

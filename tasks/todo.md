@@ -37,7 +37,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 - [ ] [21 Deploy](21-deploy.md) — [#22](https://github.com/nandes007/knowledgehub-ai/issues/22)
 - [x] [22 Observability](22-observability.md) — [#23](https://github.com/nandes007/knowledgehub-ai/issues/23)
 - [x] [23 Hardening](23-hardening.md) — [#24](https://github.com/nandes007/knowledgehub-ai/issues/24)
-- [ ] [24 Portfolio README → tag v1.0.0](24-portfolio-readme-v100.md) — [#25](https://github.com/nandes007/knowledgehub-ai/issues/25) ← MVP 🎉
+- [x] [24 Portfolio README → tag v1.0.0](24-portfolio-readme-v100.md) — [#25](https://github.com/nandes007/knowledgehub-ai/issues/25) ← MVP 🎉
 
 ## Phase 6–7: v2 + evals (pick by energy)
 - [ ] [25 Department visibility](25-v2-department-visibility.md) — [#26](https://github.com/nandes007/knowledgehub-ai/issues/26)

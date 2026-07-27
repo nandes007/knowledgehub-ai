@@ -12,7 +12,7 @@
 
 **Verification:**
 - [x] Someone who never met you understands the project from README alone
-- [ ] Tag `v1.0.0` pushed — pending: will tag after this PR merges to `main`
+- [x] Tag `v1.0.0` pushed
 
 **Dependencies:** Task 23
 

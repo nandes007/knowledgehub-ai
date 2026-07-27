@@ -17,19 +17,19 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
+        className={`max-w-[75%] rounded-sm px-4 py-2 text-sm leading-relaxed ${
           isUser
-            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-            : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
+            ? "bg-ledger text-ledger-ink"
+            : "border border-rule bg-paper-raised text-ink shadow-[0_2px_8px_-2px_rgba(36,31,26,0.12)]"
         }`}
       >
         {isThinking ? (
-          <span className="italic text-zinc-500 dark:text-zinc-400">Thinking...</span>
+          <span className="italic text-ink-muted">Thinking...</span>
         ) : isUser ? (
           message.content
         ) : (
           <>
-            <div className="[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 dark:[&_code]:bg-white/10">
+            <div className="[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded-[2px] [&_code]:bg-ink/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono">
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
             {!message.streaming && message.sources && <SourceList sources={message.sources} />}

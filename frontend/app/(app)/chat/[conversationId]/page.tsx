@@ -31,19 +31,11 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
   }, [conversationId, addOrRename]);
 
   if (loadError) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-red-600 dark:text-red-400">
-        {loadError}
-      </div>
-    );
+    return <div className="flex flex-1 items-center justify-center text-sm text-stamp-void">{loadError}</div>;
   }
 
   if (initialMessages === null) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
-        Loading…
-      </div>
-    );
+    return <div className="flex flex-1 items-center justify-center text-sm text-ink-muted">Loading…</div>;
   }
 
   return <ChatPanel conversationId={conversationId} initialMessages={initialMessages} />;

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { Button, Card, Input, Label } from "@/components/ui";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -29,68 +30,57 @@ export default function RegisterPage() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full max-w-sm space-y-4 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800"
-    >
-      <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Register</h1>
-      <div className="space-y-1">
-        <label htmlFor="email" className="text-sm text-zinc-600 dark:text-zinc-400">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-        />
+    <Card className="w-full max-w-sm space-y-5 p-6">
+      <div>
+        <h1 className="font-serif text-xl font-semibold text-ink">Register</h1>
+        <p className="mt-1 text-sm text-ink-muted">Open an account with the vault.</p>
       </div>
-      <div className="space-y-1">
-        <label htmlFor="displayName" className="text-sm text-zinc-600 dark:text-zinc-400">
-          Name (optional)
-        </label>
-        <input
-          id="displayName"
-          type="text"
-          autoComplete="name"
-          value={displayName}
-          onChange={(event) => setDisplayName(event.target.value)}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-        />
-      </div>
-      <div className="space-y-1">
-        <label htmlFor="password" className="text-sm text-zinc-600 dark:text-zinc-400">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-        />
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">At least 8 characters.</p>
-      </div>
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-      >
-        {isSubmitting ? "Creating account…" : "Register"}
-      </button>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="displayName">Name (optional)</Label>
+          <Input
+            id="displayName"
+            type="text"
+            autoComplete="name"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <p className="text-xs text-ink-muted">At least 8 characters.</p>
+        </div>
+        {error && <p className="text-sm text-stamp-void">{error}</p>}
+        <Button type="submit" disabled={isSubmitting} className="w-full">
+          {isSubmitting ? "Creating account…" : "Register"}
+        </Button>
+      </form>
+      <p className="text-sm text-ink-muted">
         Already have an account?{" "}
-        <Link href="/login" className="underline hover:text-zinc-700 dark:hover:text-zinc-300">
+        <Link href="/login" className="font-medium text-brass-strong hover:underline">
           Log in
         </Link>
       </p>
-    </form>
+    </Card>
   );
 }

@@ -1,0 +1,239 @@
+---
+# PostgreSQL on the app server, replacing Supabase.
+#
+#   ansible-playbook -i inventory.yml postgres.yml --ask-vault-pass
+#
+# Needs `postgres_password` in vault.yml (see vault.yml.example).
+# Idempotent: re-running only reapplies config, and rotates the app password
+# if you changed it in the vault.
+#
+# It listens on loopback only - no port is opened in ufw. Reach it from your
+# laptop with an SSH tunnel; see the summary the playbook prints at the end.
+
+- name: Install and configure PostgreSQL
+  hosts: knowledgehub
+  remote_user: "{{ deploy_user }}"
+  become: true
+  vars_files:
+    - vault.yml
+
+  tasks:
+    # Alphanumeric only: the password goes into a URL-shaped DATABASE_URL, and
+    # a stray `@`, `/` or `:` there fails in a way that looks like a network
+    # problem rather than a quoting one.
+    - name: Require a database password
+      ansible.builtin.assert:
+        that: postgres_password | default('') is match('^[A-Za-z0-9]{16,}$')
+        fail_msg: >-
+          Set postgres_password in vault.yml to 16+ alphanumeric characters:
+          openssl rand -hex 24
+
+    - name: Install PostgreSQL
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          # community.postgresql modules run on the server and need a driver.
+          - python3-psycopg2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Debian's postgresql.conf ends with `include_dir = 'conf.d'`, so a drop-in
+    # survives package upgrades in a way that editing postgresql.conf does not.
+    - name: Check the cluster matches pg_version
+      ansible.builtin.stat:
+        path: "{{ pg_conf_dir }}"
+      register: pg_conf
+      failed_when: not pg_conf.stat.isdir | default(false)
+
+    - name: Tune and harden the cluster
+      notify: Restart postgresql
+      ansible.builtin.template:
+        src: postgresql-tuning.conf.j2
+        dest: "{{ pg_conf_dir }}/10-knowledgehub.conf"
+        owner: postgres
+        group: postgres
+        mode: "0640"
+
+    # ponytail: pg_hba.conf is left at the Debian default - it is already
+    # `peer` on the local socket and `scram-sha-256` over 127.0.0.1/::1, which
+    # is exactly what the app (host-networked container -> 127.0.0.1:5432)
+    # needs. Nothing to add unless a second host ever connects.
+
+    - name: Start PostgreSQL at boot
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Apply pending config now
+      ansible.builtin.meta: flush_handlers
+
+    - name: Create the application role
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ postgres_password }}"
+        # Least privilege: it owns its own database and nothing else.
+        role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE
+      no_log: true
+
+    - name: Create the database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+        encoding: UTF8
+
+    - name: Keep other roles out of the database
+      become_user: postgres
+      community.postgresql.postgresql_privs:
+        login_db: "{{ db_name }}"
+        type: database
+        role: PUBLIC
+        privs: CONNECT
+        state: absent
+
+    - name: Let the app role connect
+      become_user: postgres
+      community.postgresql.postgresql_privs:
+        login_db: "{{ db_name }}"
+        type: database
+        role: "{{ db_user }}"
+        privs: CONNECT,TEMP
+
+    # app/db.py sets `search_path TO knowledgehub, public` on every connection,
+    # and SQLModel's create_all does not create the schema itself.
+    - name: Create the application schema
+      become_user: postgres
+      community.postgresql.postgresql_schema:
+        login_db: "{{ db_name }}"
+        name: "{{ db_schema }}"
+        owner: "{{ db_user }}"
+
+    - name: Stop anyone creating objects in public
+      become_user: postgres
+      community.postgresql.postgresql_privs:
+        login_db: "{{ db_name }}"
+        type: schema
+        objs: public
+        role: PUBLIC
+        privs: CREATE
+        state: absent
+
+    - name: Install the backup script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/pg-backup
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # Managed by Ansible - deploy/ansible/postgres.yml
+          set -eu
+          dir=/var/backups/postgresql
+          # -Fc: compressed custom format, restore with pg_restore.
+          pg_dump -Fc {{ db_name }} > "$dir/{{ db_name }}-$(date +%F).dump.tmp"
+          mv "$dir/{{ db_name }}-$(date +%F).dump.tmp" \
+             "$dir/{{ db_name }}-$(date +%F).dump"
+          find "$dir" -name '*.dump' -mtime +{{ pg_backup_keep_days }} -delete
+
+    - name: Create the backup directory
+      ansible.builtin.file:
+        path: /var/backups/postgresql
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: "0700"
+
+    # A systemd timer rather than cron: same effort, and `systemctl status
+    # pg-backup` tells you whether last night's dump actually worked.
+    - name: Install the backup unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/pg-backup.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Dump the {{ db_name }} database
+          After=postgresql.service
+
+          [Service]
+          Type=oneshot
+          User=postgres
+          ExecStart=/usr/local/bin/pg-backup
+
+    - name: Install the backup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/pg-backup.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily {{ db_name }} backup
+
+          [Timer]
+          OnCalendar=daily
+          # The host may be asleep or rebooting at 00:00; run on next boot instead
+          # of skipping the day.
+          Persistent=true
+          RandomizedDelaySec=30m
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable the backup timer
+      ansible.builtin.systemd_service:
+        name: pg-backup.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Take a first backup so the restore path is proven, not assumed
+      ansible.builtin.command: systemctl start --wait pg-backup.service
+      changed_when: true
+
+    - name: Check the dump landed
+      ansible.builtin.find:
+        paths: /var/backups/postgresql
+        patterns: "*.dump"
+      register: dumps
+      failed_when: dumps.matched == 0
+
+    # Proves the exact DSN the app will use, password and TCP path included -
+    # not just that the server is up on its local socket.
+    - name: Connect the way the application will
+      community.postgresql.postgresql_query:
+        login_host: 127.0.0.1
+        login_user: "{{ db_user }}"
+        login_password: "{{ postgres_password }}"
+        login_db: "{{ db_name }}"
+        query: SELECT current_user, current_database()
+      no_log: true
+
+    - name: How to use it
+      ansible.builtin.debug:
+        msg: |
+          PostgreSQL is up. Nothing is exposed to the internet - loopback only.
+
+          host      127.0.0.1   port 5432
+          database  {{ db_name }}
+          user      {{ db_user }}
+          password  (postgres_password in deploy/ansible/vault.yml)
+          schema    {{ db_schema }}
+
+          From your laptop:
+            ssh -L 5432:127.0.0.1:5432 {{ deploy_user }}@{{ ansible_host }}
+            psql "postgresql://{{ db_user }}@127.0.0.1:5432/{{ db_name }}"
+
+          On the server:
+            sudo -u postgres psql {{ db_name }}
+
+          Point the app at it: set `use_local_postgres: true` in inventory.yml,
+          then re-run site.yml.
+
+          Backups: /var/backups/postgresql, daily, {{ pg_backup_keep_days }} days kept.
+            systemctl list-timers pg-backup.timer
+            sudo -u postgres pg_restore -d {{ db_name }} --clean <dump>
+
+  handlers:
+    - name: Restart postgresql
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted

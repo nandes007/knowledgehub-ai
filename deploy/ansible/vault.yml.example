@@ -7,6 +7,10 @@
 # Note the +psycopg driver and sslmode=require.
 supabase_db_url: "postgresql+psycopg://postgres:PASSWORD@db.REF.supabase.co:5432/postgres?sslmode=require"
 
+# Self-hosted PostgreSQL app-role password (postgres.yml).
+#   openssl rand -hex 24
+postgres_password: "CHANGEME"
+
 openai_api_key: "sk-..."
 
 # openssl rand -hex 32  - do not reuse the dev value.

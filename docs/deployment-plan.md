@@ -91,6 +91,45 @@ server setup only; `--skip-tags bootstrap` does an app-only redeploy.
 
 ---
 
+## Self-hosted PostgreSQL — replacing Supabase
+
+`deploy/ansible/postgres.yml` installs PostgreSQL 16 on the app server itself.
+
+```bash
+cd deploy/ansible
+ansible-vault edit vault.yml         # postgres_password: openssl rand -hex 24
+ansible-playbook -i inventory.yml postgres.yml --ask-vault-pass
+```
+
+It creates the `knowledgehub` database, a non-superuser role that owns it, and the `knowledgehub`
+schema that `app/db.py` puts on the `search_path` — SQLModel's `create_all` makes the tables but
+never the schema. It also installs a daily `pg_dump` timer (`/var/backups/postgresql`, 7 days) and
+runs a first dump immediately, so the restore path is proven rather than assumed. The playbook ends
+by printing the connection details.
+
+**It listens on loopback only** and no port is opened in ufw — the backend container uses host
+networking, so `127.0.0.1:5432` reaches it, and nothing else can. From your laptop:
+
+```bash
+ssh -L 5432:127.0.0.1:5432 nandes@<server-ipv6>
+psql "postgresql://knowledgehub@127.0.0.1:5432/knowledgehub"
+```
+
+**Cutting over from Supabase** — the app still points at Supabase until you say otherwise:
+
+```bash
+# 1. copy the data (schema included; run from your laptop, over the tunnel above)
+pg_dump -Fc "<supabase_db_url without the +psycopg>" -n knowledgehub \
+  | pg_restore -d "postgresql://knowledgehub:<pw>@127.0.0.1:5432/knowledgehub" --no-owner
+# 2. use_local_postgres: true in inventory.yml
+# 3. ansible-playbook -i inventory.yml site.yml --ask-vault-pass -e bootstrap_user=nandes
+```
+
+Keep `supabase_db_url` in the vault until you're satisfied — flipping the flag back and re-running
+`site.yml` is the rollback.
+
+---
+
 ## Phase 1 — First contact and the `nandes` user
 
 From your workstation (with IPv6 / WARP up):

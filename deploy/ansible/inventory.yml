@@ -12,3 +12,18 @@ all:
     # IPv6-only host: Docker Hub is IPv4-only, so image pulls need DNS64/NAT64.
     # Set false only if the server turns out to have working IPv4 egress.
     dns64_enabled: true
+
+    # --- Self-hosted PostgreSQL (postgres.yml) ---
+    db_name: knowledgehub
+    db_user: knowledgehub
+    # app/db.py sets search_path to this schema on every connection.
+    db_schema: knowledgehub
+    # Ubuntu 24.04 ships PostgreSQL 16. Bump after a major-version upgrade -
+    # postgres.yml fails loudly if the cluster directory does not exist.
+    pg_version: "16"
+    pg_conf_dir: /etc/postgresql/{{ pg_version }}/main/conf.d
+    pg_backup_keep_days: 7
+
+    # The app talks to the local PostgreSQL from postgres.yml. Set back to false
+    # and re-run site.yml to fall back to Supabase.
+    use_local_postgres: true

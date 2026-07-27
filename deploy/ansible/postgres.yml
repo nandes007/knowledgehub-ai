@@ -7,8 +7,9 @@
 # Idempotent: re-running only reapplies config, and rotates the app password
 # if you changed it in the vault.
 #
-# It listens on loopback only - no port is opened in ufw. Reach it from your
-# laptop with an SSH tunnel; see the summary the playbook prints at the end.
+# It listens on loopback, plus this host's own address for the servers listed in
+# `pg_client_hosts` - ufw drops 5432 from anywhere else. From your laptop, use an
+# SSH tunnel; see the summary the playbook prints at the end.
 
 - name: Install and configure PostgreSQL
   hosts: knowledgehub
@@ -55,10 +56,10 @@
         group: postgres
         mode: "0640"
 
-    # ponytail: pg_hba.conf is left at the Debian default - it is already
-    # `peer` on the local socket and `scram-sha-256` over 127.0.0.1/::1, which
-    # is exactly what the app (host-networked container -> 127.0.0.1:5432)
-    # needs. Nothing to add unless a second host ever connects.
+    # ponytail: the Debian default pg_hba.conf is kept as-is - `peer` on the
+    # local socket and `scram-sha-256` over 127.0.0.1/::1 is exactly what the
+    # host-networked app container needs. Entries for other servers are added
+    # further down, from pg_client_hosts.
 
     - name: Start PostgreSQL at boot
       ansible.builtin.service:
@@ -121,6 +122,57 @@
         privs: CREATE
         state: absent
 
+    # Databases for other projects on this server. They share db_user rather
+    # than getting a role each: one credential to rotate, at the cost of that
+    # credential opening every database on the box.
+    - name: Create the other databases
+      become_user: postgres
+      loop: "{{ pg_extra_databases | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      community.postgresql.postgresql_db:
+        name: "{{ item.name }}"
+        owner: "{{ db_user }}"
+        encoding: UTF8
+
+    # Frameworks that target a named schema (Hibernate's default_schema,
+    # Liquibase's defaultSchemaName) expect it to exist already - they create
+    # tables in it, never the schema itself.
+    - name: Create their schemas
+      become_user: postgres
+      loop: "{{ pg_extra_databases | default([]) | selectattr('schema', 'defined') }}"
+      loop_control:
+        label: "{{ item.name }}.{{ item.schema }}"
+      community.postgresql.postgresql_schema:
+        login_db: "{{ item.name }}"
+        name: "{{ item.schema }}"
+        owner: "{{ db_user }}"
+
+    # Every role can CONNECT to every database by default, so this matters as
+    # soon as a second role exists - a read-only reporting login, say.
+    - name: Keep the other databases off limits to everyone else
+      become_user: postgres
+      loop: "{{ pg_extra_databases | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      community.postgresql.postgresql_privs:
+        login_db: "{{ item.name }}"
+        type: database
+        role: PUBLIC
+        privs: CONNECT
+        state: absent
+
+    - name: Let the maintenance role connect to them
+      become_user: postgres
+      loop: "{{ pg_extra_databases | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      community.postgresql.postgresql_privs:
+        login_db: "{{ item.name }}"
+        type: database
+        role: "{{ db_user }}"
+        privs: CONNECT,TEMP
+
     - name: Install the backup script
       ansible.builtin.copy:
         dest: /usr/local/bin/pg-backup
@@ -130,10 +182,24 @@
           # Managed by Ansible - deploy/ansible/postgres.yml
           set -eu
           dir=/var/backups/postgresql
-          # -Fc: compressed custom format, restore with pg_restore.
-          pg_dump -Fc {{ db_name }} > "$dir/{{ db_name }}-$(date +%F).dump.tmp"
-          mv "$dir/{{ db_name }}-$(date +%F).dump.tmp" \
-             "$dir/{{ db_name }}-$(date +%F).dump"
+          day=$(date +%F)
+
+          # Every real database, asked for at run time - so a database added
+          # later is backed up without anyone remembering to edit this script.
+          # Assigned rather than piped into the loop: `set -e` then aborts if
+          # psql itself fails, instead of quietly iterating over nothing.
+          dbs=$(psql -Atqc "SELECT datname FROM pg_database
+                            WHERE NOT datistemplate AND datallowconn
+                              AND datname <> 'postgres'")
+
+          for db in $dbs; do
+            # Write to .tmp and rename: a dump interrupted half way through then
+            # leaves no file at all, rather than a truncated one that looks valid.
+            # -Fc: compressed custom format, restore with pg_restore.
+            pg_dump -Fc "$db" > "$dir/$db-$day.dump.tmp"
+            mv "$dir/$db-$day.dump.tmp" "$dir/$db-$day.dump"
+          done
+
           find "$dir" -name '*.dump' -mtime +{{ pg_backup_keep_days }} -delete
 
     - name: Create the backup directory
@@ -189,12 +255,14 @@
       ansible.builtin.command: systemctl start --wait pg-backup.service
       changed_when: true
 
-    - name: Check the dump landed
+    # One dump per database, dated today - so the check still catches it if the
+    # loop over databases breaks and only the first one gets dumped.
+    - name: Check today's dumps landed, one per database
       ansible.builtin.find:
         paths: /var/backups/postgresql
-        patterns: "*.dump"
+        patterns: "*-{{ ansible_date_time.date }}.dump"
       register: dumps
-      failed_when: dumps.matched == 0
+      failed_when: dumps.matched < 1 + (pg_extra_databases | default([]) | length)
 
     # Proves the exact DSN the app will use, password and TCP path included -
     # not just that the server is up on its local socket.
@@ -207,10 +275,37 @@
         query: SELECT current_user, current_database()
       no_log: true
 
+    # --- Access from other servers ------------------------------------------
+    # Both servers sit in the same IPv6 /64, so they reach each other directly -
+    # no tunnel, no VPN. Postgres stays shut to everyone else: it binds only
+    # loopback plus this host's own address, ufw opens 5432 to the listed
+    # addresses alone, and pg_hba demands TLS from them.
+    - name: Allow the client servers in, over TLS only
+      become_user: postgres
+      notify: Reload postgresql
+      loop: "{{ pg_client_hosts | default([]) }}"
+      community.postgresql.postgresql_pg_hba:
+        dest: /etc/postgresql/{{ pg_version }}/main/pg_hba.conf
+        # hostssl, not host: an unencrypted connection is refused outright
+        # rather than quietly accepted when the client forgets sslmode.
+        contype: hostssl
+        databases: all
+        users: "{{ db_user }}"
+        address: "{{ item }}"
+        method: scram-sha-256
+
+    - name: Open 5432 to those servers and no one else
+      loop: "{{ pg_client_hosts | default([]) }}"
+      community.general.ufw:
+        rule: allow
+        from_ip: "{{ item }}"
+        to_port: "5432"
+        proto: tcp
+
     - name: How to use it
       ansible.builtin.debug:
         msg: |
-          PostgreSQL is up. Nothing is exposed to the internet - loopback only.
+          PostgreSQL is up.
 
           host      127.0.0.1   port 5432
           database  {{ db_name }}
@@ -227,8 +322,24 @@
 
           Point the app at it: set `use_local_postgres: true` in inventory.yml,
           then re-run site.yml.
+          {% for extra in pg_extra_databases | default([]) %}
+          {% if loop.first %}
 
-          Backups: /var/backups/postgresql, daily, {{ pg_backup_keep_days }} days kept.
+          Other databases here, same user and password:
+          {% endif %}
+            {{ extra.name }}{{ ' (schema ' ~ extra.schema ~ ')' if extra.schema is defined else '' }}
+          {% endfor %}
+          {% for client in pg_client_hosts | default([]) %}
+          {% if loop.first %}
+
+          Reachable from these servers, TLS required:
+          {% endif %}
+            {{ client }}
+              jdbc:postgresql://[{{ ansible_host }}]:5432/DATABASE?sslmode=require
+              psql "postgresql://{{ db_user }}@[{{ ansible_host }}]:5432/DATABASE?sslmode=require"
+          {% endfor %}
+
+          Backups: /var/backups/postgresql, daily, all databases, {{ pg_backup_keep_days }} days kept.
             systemctl list-timers pg-backup.timer
             sudo -u postgres pg_restore -d {{ db_name }} --clean <dump>
 
@@ -237,3 +348,10 @@
       ansible.builtin.service:
         name: postgresql
         state: restarted
+
+    # pg_hba is re-read on reload; a restart would drop live connections for
+    # nothing.
+    - name: Reload postgresql
+      ansible.builtin.service:
+        name: postgresql
+        state: reloaded

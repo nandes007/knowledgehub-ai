@@ -128,6 +128,53 @@ pg_dump -Fc "<supabase_db_url without the +psycopg>" -n knowledgehub \
 Keep `supabase_db_url` in the vault until you're satisfied — flipping the flag back and re-running
 `site.yml` is the rollback.
 
+### Databases for other projects
+
+One role — `nandestech`, set as `db_user` — owns every database on the server, including
+`knowledgehub`. Add more databases by name:
+
+```yaml
+pg_extra_databases:
+  - otherproject
+```
+
+They share `db_user` and its password. That means one credential to rotate, and it opens every
+database on the box: a leak in any project is a leak in all of them. A role per project is the
+safer shape if that ever stops being acceptable. `CONNECT` is still revoked from `PUBLIC`, which
+matters the moment a second role exists.
+
+The backup script asks Postgres for the database list at run time, so a new database is dumped
+without editing anything.
+
+### Reaching it from a second server
+
+The other 8labs servers sit in the same IPv6 `/64`, so they connect directly — no tunnel, no VPN.
+List them in `inventory.yml`:
+
+```yaml
+pg_client_hosts:
+  - 2407:6ac0:3:9d:abcd::1c4/128    # meeting-room-booking
+```
+
+Three things happen together, and all three are needed:
+
+1. `listen_addresses` gains this host's own address (loopback alone can't serve another machine).
+2. `pg_hba.conf` gets a `hostssl … scram-sha-256` line for that `/128` — `hostssl`, not `host`, so
+   a client that forgets `sslmode` is refused rather than silently connecting in the clear.
+3. ufw opens 5432 **from those addresses only**. Everything else is still dropped.
+
+Clients use `?sslmode=require`. TLS is the packaged snakeoil certificate, so traffic is encrypted
+but unauthenticated — fine inside one provider's `/64`, not fine over the open internet. Install a
+real certificate and move clients to `verify-full` if that changes.
+
+**Containers on the client server need IPv6 too.** Rootless podman's default bridge is IPv4-only,
+so a container there cannot reach this host's address even though its host can — the same trap
+that makes `docker-compose.prod.yml` here use `network_mode: host`. The client project needs the
+same treatment.
+
+The coupling is real: if this server goes down, the other project loses its database too. For
+anything you care about, run its own PostgreSQL on its own server with this same playbook.
+
 ---
 
 ## Phase 1 — First contact and the `nandes` user

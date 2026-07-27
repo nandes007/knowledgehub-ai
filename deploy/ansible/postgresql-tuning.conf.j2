@@ -2,10 +2,21 @@
 # Loaded last via postgresql.conf's `include_dir = 'conf.d'`, so these win
 # over the packaged defaults without editing the packaged file.
 
-# The app reaches the database over the host's loopback (its container uses
-# host networking). Nothing off-box connects, so never bind a public address.
+# The app on this host reaches the database over loopback (its container uses
+# host networking). Listening on the host's own address as well is only for the
+# servers in pg_client_hosts - ufw still drops 5432 from everywhere else.
+{% if pg_client_hosts | default([]) %}
+listen_addresses = 'localhost,{{ ansible_host }}'
+{% else %}
 listen_addresses = 'localhost'
+{% endif %}
 password_encryption = scram-sha-256
+
+# ponytail: TLS uses the packaged snakeoil certificate, so off-host traffic is
+# encrypted but the client cannot verify who it is talking to. Both servers are
+# in one provider's /64; if that stops being true, install a real certificate
+# and move clients to sslmode=verify-full.
+ssl = on
 
 # Sized from this host's RAM ({{ ansible_facts['memtotal_mb'] }} MB). Lower than
 # the standalone rule of thumb (25% / 75%) because the app containers, Chroma

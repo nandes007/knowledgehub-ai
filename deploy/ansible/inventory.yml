@@ -15,7 +15,9 @@ all:
 
     # --- Self-hosted PostgreSQL (postgres.yml) ---
     db_name: knowledgehub
-    db_user: knowledgehub
+    # One role for every database on this server, not one per project - see
+    # pg_extra_databases below.
+    db_user: nandestech
     # app/db.py sets search_path to this schema on every connection.
     db_schema: knowledgehub
     # Ubuntu 24.04 ships PostgreSQL 16. Bump after a major-version upgrade -
@@ -23,6 +25,21 @@ all:
     pg_version: "16"
     pg_conf_dir: /etc/postgresql/{{ pg_version }}/main/conf.d
     pg_backup_keep_days: 7
+
+    # Databases for other projects. They are owned by db_user above and share
+    # its password - one login to maintain, at the cost of that login opening
+    # every database. `schema` is optional; omit it and the project's tables go
+    # in `public`, which the owning role can already write to.
+    pg_extra_databases:
+      # Java/Spring app on ...::1c4. Hibernate's default_schema and Liquibase
+      # both expect this schema to exist before the app starts.
+      - name: meeting_room_booking
+        schema: meeting_room_booking
+
+    # Servers allowed to connect over the network, one /128 each. Everything
+    # else is dropped by ufw; these still need TLS and the scram password.
+    pg_client_hosts:
+      - 2407:6ac0:3:9d:abcd::1c4/128    # meeting-room-booking
 
     # The app talks to the local PostgreSQL from postgres.yml. Set back to false
     # and re-run site.yml to fall back to Supabase.

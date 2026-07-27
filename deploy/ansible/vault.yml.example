@@ -7,7 +7,8 @@
 # Note the +psycopg driver and sslmode=require.
 supabase_db_url: "postgresql+psycopg://postgres:PASSWORD@db.REF.supabase.co:5432/postgres?sslmode=require"
 
-# Self-hosted PostgreSQL app-role password (postgres.yml).
+# Password for db_user (postgres.yml) - the one login for every database on
+# the server, this project's included.
 #   openssl rand -hex 24
 postgres_password: "CHANGEME"
 

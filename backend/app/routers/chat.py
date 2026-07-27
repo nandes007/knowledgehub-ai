@@ -2,7 +2,7 @@ import json
 import uuid
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Engine
 from sqlmodel import Session, select
@@ -11,8 +11,9 @@ from app.db import get_engine
 from app.deps import CurrentUserDep
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.rate_limit import limiter
 from app.schemas.chat import ChatRequest
-from app.services.llm import LLMProvider, get_llm_provider
+from app.services.llm import LLMProvider, TokenUsage, get_llm_provider
 from app.services.rag import stream_answer
 from ingestion.index import VectorStore, get_vector_store
 
@@ -58,6 +59,7 @@ def _event_stream(
     conversation_id: uuid.UUID,
     tokens: Iterator[str],
     sources: list[dict],
+    usage: TokenUsage,
 ) -> Iterator[str]:
     answer_parts: list[str] = []
     try:
@@ -70,6 +72,10 @@ def _event_stream(
         yield _sse("error", {"message": str(exc)})
         return
 
+    token_count = None
+    if usage.prompt_tokens is not None and usage.completion_tokens is not None:
+        token_count = usage.prompt_tokens + usage.completion_tokens
+
     # A fresh session, not the route's SessionDep - the injected dependency
     # is torn down once the route function returns, before this generator's
     # body (which runs while Starlette streams the response) executes.
@@ -79,6 +85,7 @@ def _event_stream(
             role="assistant",
             content="".join(answer_parts),
             sources=sources,
+            token_count=token_count,
         )
         session.add(message)
         session.commit()
@@ -92,28 +99,30 @@ def _event_stream(
 
 
 @router.post("/chat")
+@limiter.limit("20/minute")
 def chat(
-    request: ChatRequest,
+    request: Request,
+    payload: ChatRequest,
     current_user: CurrentUserDep,
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
     engine: Engine = Depends(get_engine),
 ) -> StreamingResponse:
     with Session(engine) as session:
-        conversation = _get_or_create_conversation(session, request.conversation_id, current_user.id)
+        conversation = _get_or_create_conversation(session, payload.conversation_id, current_user.id)
         history = _recent_history(session, conversation.id, _HISTORY_LIMIT)
-        session.add(Message(conversation_id=conversation.id, role="user", content=request.message))
+        session.add(Message(conversation_id=conversation.id, role="user", content=payload.message))
         session.commit()
         conversation_id = conversation.id
 
-    tokens, sources = stream_answer(
-        request.message,
+    tokens, sources, usage = stream_answer(
+        payload.message,
         user_id=str(current_user.id),
         llm=llm,
         vector_store=vector_store,
         history=history,
     )
     return StreamingResponse(
-        _event_stream(engine, conversation_id, tokens, sources),
+        _event_stream(engine, conversation_id, tokens, sources, usage),
         media_type="text/event-stream",
     )

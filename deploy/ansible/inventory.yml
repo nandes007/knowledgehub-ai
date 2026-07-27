@@ -1,0 +1,14 @@
+all:
+  hosts:
+    knowledgehub:
+      # Server public IPv6. Your laptop needs IPv6 (or Cloudflare WARP) to reach it.
+      ansible_host: "2407:6ac0:3:9d:abcd::1bb"
+  vars:
+    domain: knowledgehubai.nandes.tech
+    deploy_user: nandes
+    app_dir: /home/nandes/knowledgehub-ai
+    ssh_pubkey_file: ~/.ssh/id_ed25519.pub
+
+    # IPv6-only host: Docker Hub is IPv4-only, so image pulls need DNS64/NAT64.
+    # Set false only if the server turns out to have working IPv4 egress.
+    dns64_enabled: true

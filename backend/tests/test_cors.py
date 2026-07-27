@@ -27,3 +27,15 @@ def test_rejects_an_unconfigured_origin():
     )
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_preflight_does_not_advertise_unused_http_methods():
+    response = client.options(
+        "/healthz",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "PUT",
+        },
+    )
+
+    assert "PUT" not in response.headers.get("access-control-allow-methods", "")

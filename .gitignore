@@ -5,6 +5,11 @@
 # local podman override (rootless CNI dnsname workaround, machine-specific)
 docker-compose.override.yml
 
+# deployment secrets (vault.yml is encrypted, but don't tempt fate)
+deploy/ansible/vault.yml
+deploy/ansible/certs/*
+!deploy/ansible/certs/.gitkeep
+
 # python
 __pycache__/
 *.pyc

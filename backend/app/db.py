@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, event
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import settings
@@ -15,7 +15,7 @@ def _set_search_path(dbapi_connection, connection_record) -> None:
     cursor.execute("SET search_path TO knowledgehub, public")
     cursor.close()
     dbapi_connection.commit()
-    
+
 
 def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)

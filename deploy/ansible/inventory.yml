@@ -2,7 +2,7 @@ all:
   hosts:
     knowledgehub:
       # Server public IPv6. Your laptop needs IPv6 (or Cloudflare WARP) to reach it.
-      ansible_host: "2407:6ac0:3:9d:abcd::1bb"
+      ansible_host: "knowledgehub.tailc79dc7.ts.net"
   vars:
     domain: knowledgehubai.nandes.tech
     deploy_user: nandes

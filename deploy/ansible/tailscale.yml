@@ -1,0 +1,89 @@
+---
+# Join this server to your Tailscale network, so your laptop and other
+# servers can reach it (and Postgres) without a public IPv6 route, an SSH
+# tunnel, or opening ports to the internet.
+#
+#   ansible-playbook -i inventory.yml tailscale.yml --ask-vault-pass
+#
+# Needs `tailscale_authkey` in vault.yml - generate a reusable one at
+# https://login.tailscale.com/admin/settings/keys (reusable so re-running
+# this playbook doesn't burn a one-shot key).
+#
+# After this runs:
+#   1. In the admin console, disable key expiry for this node - Machines ->
+#      this host -> Disable key expiry. Otherwise it silently drops off the
+#      tailnet in 180 days and Postgres access breaks with no warning.
+#   2. Install Tailscale on your laptop and log into the same account.
+#   3. Set tailscale_enabled: true in inventory.yml and re-run postgres.yml
+#      to open Postgres to the tailnet.
+
+- name: Install and join Tailscale
+  hosts: knowledgehub
+  remote_user: "{{ deploy_user }}"
+  become: true
+  vars_files:
+    - vault.yml
+
+  tasks:
+    - name: Require a Tailscale auth key
+      ansible.builtin.assert:
+        that: tailscale_authkey | default('') | length > 0
+        fail_msg: >-
+          Set tailscale_authkey in vault.yml - generate one at
+          https://login.tailscale.com/admin/settings/keys
+
+    # Official installer: detects the distro/codename itself, so it doesn't
+    # go stale the way a hardcoded apt repo line would on the next Ubuntu
+    # upgrade.
+    - name: Install Tailscale
+      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Start and enable tailscaled
+      ansible.builtin.service:
+        name: tailscaled
+        state: started
+        enabled: true
+
+    - name: Check current Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status
+      changed_when: false
+
+    - name: Join the tailnet
+      when: (tailscale_status.stdout | from_json).BackendState != 'Running'
+      ansible.builtin.command:
+        cmd: >-
+          tailscale up
+          --authkey={{ tailscale_authkey }}
+          --hostname={{ inventory_hostname }}
+      register: tailscale_join
+      changed_when: true
+      no_log: true
+
+    - name: Get this host's Tailscale IP
+      ansible.builtin.command: tailscale ip -4
+      register: tailscale_ip_result
+      changed_when: false
+
+    - name: How to use it
+      ansible.builtin.debug:
+        msg: |
+          Tailscale is up.
+
+          hostname       {{ inventory_hostname }}
+          tailscale IP   {{ tailscale_ip_result.stdout }}
+
+          Next:
+            1. Disable key expiry for this node in the admin console:
+               https://login.tailscale.com/admin/machines
+            2. Install Tailscale on your laptop, log into the same account.
+            3. Install it on any other server that needs Postgres too, same
+               account.
+            4. Set tailscale_enabled: true in inventory.yml, then:
+               ansible-playbook -i inventory.yml postgres.yml --ask-vault-pass
+
+          That opens 5432 to the tailnet (100.64.0.0/10) only - still closed
+          to the public internet. Once every client has migrated, drop the
+          matching entries from pg_client_hosts.

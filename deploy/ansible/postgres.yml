@@ -47,6 +47,17 @@
       register: pg_conf
       failed_when: not pg_conf.stat.isdir | default(false)
 
+    - name: Get this host's Tailscale IP
+      when: tailscale_enabled | default(false)
+      ansible.builtin.command: tailscale ip -4
+      register: tailscale_ip_result
+      changed_when: false
+
+    - name: Set Tailscale IP fact
+      when: tailscale_enabled | default(false)
+      ansible.builtin.set_fact:
+        tailscale_ip: "{{ tailscale_ip_result.stdout }}"
+
     - name: Tune and harden the cluster
       notify: Restart postgresql
       ansible.builtin.template:
@@ -302,6 +313,29 @@
         to_port: "5432"
         proto: tcp
 
+    - name: Allow the tailnet in
+      when: tailscale_enabled | default(false)
+      become_user: postgres
+      notify: Reload postgresql
+      community.postgresql.postgresql_pg_hba:
+        dest: /etc/postgresql/{{ pg_version }}/main/pg_hba.conf
+        # host, not hostssl: Tailscale's WireGuard tunnel already encrypts
+        # this traffic, so demanding Postgres-level TLS on top is redundant.
+        contype: host
+        databases: all
+        users: "{{ db_user }}"
+        address: 100.64.0.0/10
+        method: scram-sha-256
+
+    - name: Open 5432 to the tailnet only
+      when: tailscale_enabled | default(false)
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+        to_port: "5432"
+        proto: tcp
+
     - name: How to use it
       ansible.builtin.debug:
         msg: |
@@ -322,6 +356,12 @@
 
           Point the app at it: set `use_local_postgres: true` in inventory.yml,
           then re-run site.yml.
+          {% if tailscale_enabled | default(false) %}
+
+          Also reachable from any device on your tailnet, no SSH tunnel needed:
+            psql "postgresql://{{ db_user }}@{{ inventory_hostname }}:5432/{{ db_name }}"
+          DataGrip: host {{ inventory_hostname }} (or {{ tailscale_ip }}), port 5432, no SSH tab.
+          {% endif %}
           {% for extra in pg_extra_databases | default([]) %}
           {% if loop.first %}
 

@@ -44,3 +44,8 @@ all:
     # The app talks to the local PostgreSQL from postgres.yml. Set back to false
     # and re-run site.yml to fall back to Supabase.
     use_local_postgres: true
+
+    # --- Tailscale (tailscale.yml) ---
+    # Set true after running tailscale.yml, then re-run postgres.yml to open
+    # 5432 to the tailnet (100.64.0.0/10) - no public IPv6, no SSH tunnel.
+    tailscale_enabled: true

@@ -14,5 +14,9 @@ postgres_password: "CHANGEME"
 
 openai_api_key: "sk-..."
 
+# Reusable auth key for tailscale.yml, from
+# https://login.tailscale.com/admin/settings/keys
+tailscale_authkey: "tskey-auth-..."
+
 # openssl rand -hex 32  - do not reuse the dev value.
 jwt_secret: "CHANGEME"

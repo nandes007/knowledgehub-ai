@@ -3,13 +3,17 @@
 # over the packaged defaults without editing the packaged file.
 
 # The app on this host reaches the database over loopback (its container uses
-# host networking). Listening on the host's own address as well is only for the
-# servers in pg_client_hosts - ufw still drops 5432 from everywhere else.
+# host networking). Listening on the host's own address / tailscale address
+# too is only for pg_client_hosts / the tailnet - ufw still drops 5432 from
+# everywhere else.
+{% set listen_on = ['localhost'] %}
 {% if pg_client_hosts | default([]) %}
-listen_addresses = 'localhost,{{ ansible_host }}'
-{% else %}
-listen_addresses = 'localhost'
+{%   set _ = listen_on.append(ansible_host) %}
 {% endif %}
+{% if tailscale_ip is defined %}
+{%   set _ = listen_on.append(tailscale_ip) %}
+{% endif %}
+listen_addresses = '{{ listen_on | join(',') }}'
 password_encryption = scram-sha-256
 
 # ponytail: TLS uses the packaged snakeoil certificate, so off-host traffic is

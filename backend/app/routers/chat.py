@@ -117,9 +117,10 @@ def chat(
 
     tokens, sources, usage = stream_answer(
         payload.message,
-        user_id=str(current_user.id),
         llm=llm,
         vector_store=vector_store,
+        department=current_user.department,
+        role=current_user.role,
         history=history,
     )
     return StreamingResponse(

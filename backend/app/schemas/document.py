@@ -18,6 +18,8 @@ class DocumentSummary(BaseModel):
     id: uuid.UUID
     filename: str
     status: str
+    department: str | None
+    visibility: str
     chunk_count: int | None
     error_message: str | None
     created_at: datetime

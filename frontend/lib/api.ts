@@ -139,10 +139,14 @@ export async function getConversationMessages(conversationId: string): Promise<C
 
 export type DocumentStatus = "processing" | "ready" | "failed";
 
+export type Visibility = "company" | "department";
+
 export type Document = {
   id: string;
   filename: string;
   status: DocumentStatus;
+  department: string | null;
+  visibility: Visibility;
   chunkCount: number | null;
   errorMessage: string | null;
   createdAt: string;
@@ -157,14 +161,18 @@ export async function listDocuments(): Promise<Document[]> {
     id: string;
     filename: string;
     status: DocumentStatus;
+    department: string | null;
+    visibility: Visibility;
     chunk_count: number | null;
     error_message: string | null;
     created_at: string;
   }[];
-  return data.map(({ id, filename, status, chunk_count, error_message, created_at }) => ({
+  return data.map(({ id, filename, status, department, visibility, chunk_count, error_message, created_at }) => ({
     id,
     filename,
     status,
+    department,
+    visibility,
     chunkCount: chunk_count,
     errorMessage: error_message,
     createdAt: created_at,
@@ -177,9 +185,14 @@ export type UploadedDocument = {
   status: DocumentStatus;
 };
 
-export async function uploadDocument(file: File): Promise<UploadedDocument> {
+export async function uploadDocument(
+  file: File,
+  options?: { department?: string; visibility?: Visibility },
+): Promise<UploadedDocument> {
   const formData = new FormData();
   formData.append("file", file);
+  if (options?.department) formData.append("department", options.department);
+  if (options?.visibility) formData.append("visibility", options.visibility);
   const response = await apiFetch(`${API_URL}/documents`, { method: "POST", body: formData });
   if (!response.ok) {
     const detail = await response
@@ -204,11 +217,12 @@ export async function registerAccount(
   email: string,
   password: string,
   displayName?: string,
+  department?: string,
 ): Promise<AuthResult> {
   const response = await apiFetch(`${API_URL}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, display_name: displayName }),
+    body: JSON.stringify({ email, password, display_name: displayName, department }),
   });
   if (!response.ok) {
     if (response.status === 409) throw new Error("An account with that email already exists.");

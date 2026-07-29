@@ -37,16 +37,29 @@ No preamble like "Based on the provided context" - just answer."""
 _SYSTEM_PROMPT = _SYSTEM_PROMPT_TEMPLATE.format(company=_COMPANY)
 
 
+def _visibility_where(*, department: str | None, role: str) -> dict | None:
+    """Admins see every document; everyone else sees company-wide docs plus
+    their own department's department-only docs."""
+    if role == "admin":
+        return None
+    conditions: list[dict] = [{"visibility": "company"}]
+    if department:
+        conditions.append({"$and": [{"visibility": "department"}, {"department": department}]})
+    return conditions[0] if len(conditions) == 1 else {"$or": conditions}
+
+
 def stream_answer(
     question: str,
     *,
-    user_id: str,
     llm: LLMProvider,
     vector_store: VectorStore,
+    department: str | None = None,
+    role: str = "member",
     history: list[dict[str, str]] | None = None,
 ) -> tuple[Iterator[str], list[dict], TokenUsage]:
     query_embedding = llm.embed_texts([question])[0]
-    matches = vector_store.query(query_embedding, top_k=_TOP_K, where={"user_id": user_id})
+    where = _visibility_where(department=department, role=role)
+    matches = vector_store.query(query_embedding, top_k=_TOP_K, where=where)
 
     context = "\n\n---\n\n".join(m["text"] for m in matches)
     history_block = ""

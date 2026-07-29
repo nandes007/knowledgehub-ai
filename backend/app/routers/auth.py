@@ -19,6 +19,7 @@ def register(payload: RegisterRequest, session: SessionDep) -> TokenResponse:
         email=payload.email,
         password_hash=hash_password(payload.password),
         display_name=payload.display_name,
+        department=payload.department,
     )
     session.add(user)
     session.commit()

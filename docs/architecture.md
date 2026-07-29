@@ -26,7 +26,9 @@ Four tables: `users`, `conversations`, `messages`, `documents`. Full DDL in [`kn
 
 Vector store convention (Chroma): every chunk gets a deterministic ID
 `{document_id}::{chunk_index}::{content_hash[:12]}` with metadata
-`{document_id, user_id, filename, doc_type, department, h1, h2}`. Re-ingesting a file is delete-then-upsert scoped to that file's `document_id` — the whole collection is never rebuilt.
+`{document_id, user_id, filename, doc_type, department, visibility, h1, h2}`. Re-ingesting a file is delete-then-upsert scoped to that file's `document_id` — the whole collection is never rebuilt.
+
+Retrieval filters on `visibility`/`department` (see `app/services/rag.py`), not `user_id`: a `company`-visibility doc is retrievable by anyone, a `department`-visibility doc only by askers in that same department. `role = 'admin'` skips the filter entirely.
 
 ## Backups
 

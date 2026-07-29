@@ -30,7 +30,7 @@ Not a generic chatbot: every answer is grounded in the org's own uploaded docume
 - Stack: FastAPI + PostgreSQL + Chroma (backend), Next.js + TypeScript + Tailwind (frontend), SSE for streaming.
 - Chroma runs in-process against a local persist directory, so the backend can only ever run as a single replica.
 - Production hygiene already in place: per-user rate limiting, input length limits, strict CORS, security headers, structured JSON logs.
-- Open (v2, not yet built): department-scoped document visibility, hybrid search + rerank, admin dashboard, RAGAS eval suite.
+- Department-scoped document visibility shipped (v2). Open (v2, not yet built): hybrid search + rerank, admin dashboard, RAGAS eval suite.
 
 ## Brand Commitments
 

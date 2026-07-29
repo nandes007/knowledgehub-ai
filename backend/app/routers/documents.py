@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import Engine
 from sqlmodel import select
 
@@ -19,6 +19,7 @@ from ingestion.pipeline import ingest_document
 router = APIRouter()
 
 _SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md"}
+_VISIBILITIES = {"company", "department"}
 
 
 @router.post("/documents", response_model=DocumentRead, status_code=202)
@@ -29,6 +30,8 @@ async def upload_document(
     session: SessionDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
+    department: str | None = Form(None),
+    visibility: str = Form("company"),
     engine: Engine = Depends(get_engine),
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
@@ -45,6 +48,11 @@ async def upload_document(
             status_code=400,
             detail=f"Unsupported file type '{extension or 'unknown'}'. Supported: PDF, DOCX, PPTX, MD.",
         )
+
+    if visibility not in _VISIBILITIES:
+        raise HTTPException(status_code=400, detail=f"Visibility must be one of {sorted(_VISIBILITIES)}.")
+    if visibility == "department" and not department:
+        raise HTTPException(status_code=400, detail="A department is required for department-only visibility.")
 
     file_hash = hashlib.sha256(contents).hexdigest()
     existing = session.exec(
@@ -70,6 +78,8 @@ async def upload_document(
         file_path=str(file_path),
         file_hash=file_hash,
         status="processing",
+        department=department,
+        visibility=visibility,
     )
     session.add(document)
     session.commit()

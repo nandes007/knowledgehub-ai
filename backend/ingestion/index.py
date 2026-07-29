@@ -29,6 +29,7 @@ class VectorStore:
         embeddings: list[list[float]],
         doc_type: str = "general",
         department: str | None = None,
+        visibility: str = "company",
     ) -> int:
         ids = [chunk_id(document_id, c.index, c.text) for c in chunks]
         metadatas = [
@@ -38,6 +39,7 @@ class VectorStore:
                 "filename": filename,
                 "doc_type": doc_type,
                 "department": department or "",
+                "visibility": visibility,
                 "h1": c.h1 or "",
                 "h2": c.h2 or "",
             }

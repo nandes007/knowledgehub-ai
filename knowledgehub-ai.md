@@ -18,7 +18,7 @@
 - [ ] Dockerized, deployed with a live URL, portfolio-quality README
 
 ### v2 — after MVP is achieved
-- [ ] Department / role-based document visibility (metadata filtering at query time)
+- [x] Department / role-based document visibility (metadata filtering at query time)
 - [ ] Hybrid search (dense + BM25) and reranking
 - [ ] Admin dashboard (usage stats, cost tracking)
 - [ ] **AI / Retrieval evaluation (RAGAS)** ← intentionally last, see Phase 7
@@ -129,7 +129,8 @@ CREATE TABLE users (
     email           TEXT NOT NULL UNIQUE,
     password_hash   TEXT NOT NULL,
     display_name    TEXT,
-    role            TEXT NOT NULL DEFAULT 'member',       -- 'member' | 'admin' (v2: department roles)
+    role            TEXT NOT NULL DEFAULT 'member',       -- 'member' | 'admin'; admin bypasses department filtering
+    department      TEXT,                                  -- v2: which department's docs this user can see
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -167,7 +168,9 @@ CREATE TABLE documents (
                     CHECK (status IN ('processing', 'ready', 'failed')),
     error_message   TEXT,                                   -- populated when status = 'failed'
     doc_type        TEXT NOT NULL DEFAULT 'general',        -- onboarding, policy, product... (v2: filtering)
-    department      TEXT,                                   -- v2: visibility filtering
+    department      TEXT,                                   -- required when visibility = 'department'
+    visibility      TEXT NOT NULL DEFAULT 'company'
+                    CHECK (visibility IN ('company', 'department')),
     chunk_count     INTEGER,                                -- set after successful ingestion
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -178,8 +181,10 @@ CREATE INDEX idx_documents_status ON documents(status);
 
 **Vector store convention (Chroma):** every chunk gets a deterministic ID
 `{document_id}::{chunk_index}::{content_hash[:12]}` and metadata
-`{document_id, user_id, filename, doc_type, department, h1, h2}`.
+`{document_id, user_id, filename, doc_type, department, visibility, h1, h2}`.
 Then: delete a file's vectors with `where={"document_id": ...}`; re-ingest = delete-then-upsert for that file only. **Never rebuild the whole collection.**
+
+Retrieval at query time filters on `visibility`/`department`, not `user_id`: `company`-visibility chunks are retrievable by anyone, `department`-visibility chunks only by askers whose `users.department` matches. `role = 'admin'` skips the filter.
 
 ---
 
@@ -276,7 +281,7 @@ Then: delete a file's vectors with `where={"document_id": ...}`; re-ingest = del
 
 ### Phase 6 — v2 expansion (pick by energy, ~1 week)
 
-- [ ] **Day 26–27 — Department visibility.** `department` + `visibility` metadata on documents; Chroma `where` filtering at query time based on the asking user's role; UI selector on upload.
+- [x] **Day 26–27 — Department visibility.** `department` + `visibility` metadata on documents; Chroma `where` filtering at query time based on the asking user's role; UI selector on upload.
 - [ ] **Day 28 — Hybrid search + rerank.** Add BM25 alongside dense retrieval, merge, then rerank (cross-encoder or Cohere rerank).
 - [ ] **Day 29–30 — Admin dashboard.** Usage stats, per-user doc counts, cost over time.
 

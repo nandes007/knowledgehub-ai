@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [department, setDepartment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { register } = useAuth();
@@ -20,7 +21,7 @@ export default function RegisterPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await register(email, password, displayName || undefined);
+      await register(email, password, displayName || undefined, department || undefined);
       router.replace("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -55,6 +56,15 @@ export default function RegisterPage() {
             autoComplete="name"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="department">Department (optional)</Label>
+          <Input
+            id="department"
+            type="text"
+            value={department}
+            onChange={(event) => setDepartment(event.target.value)}
           />
         </div>
         <div className="space-y-1">

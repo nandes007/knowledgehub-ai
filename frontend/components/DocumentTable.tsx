@@ -68,6 +68,7 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
             <tr className="border-b border-rule text-ink-muted">
               <th className="py-2 pr-4 font-medium">Filename</th>
               <th className="py-2 pr-4 font-medium">Status</th>
+              <th className="py-2 pr-4 font-medium">Visibility</th>
               <th className="py-2 pr-4 font-medium">Uploaded</th>
               <th className="py-2 font-medium" aria-hidden />
             </tr>
@@ -81,6 +82,9 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
                   {doc.status === "failed" && doc.errorMessage && (
                     <p className="mt-1 max-w-xs text-xs text-stamp-void">{doc.errorMessage}</p>
                   )}
+                </td>
+                <td className="py-2 pr-4 text-xs text-ink-muted">
+                  {doc.visibility === "department" ? doc.department ?? "department" : "Company-wide"}
                 </td>
                 <td className="py-2 pr-4 font-mono text-xs text-ink-muted">{formatDate(doc.createdAt)}</td>
                 <td className="py-2 text-right">

@@ -11,6 +11,7 @@ class Document(SQLModel, table=True):
     __tablename__ = "documents"
     __table_args__ = (
         CheckConstraint("status IN ('processing', 'ready', 'failed')", name="ck_documents_status"),
+        CheckConstraint("visibility IN ('company', 'department')", name="ck_documents_visibility"),
         Index("idx_documents_user", "user_id", "created_at"),
         Index("idx_documents_status", "status"),
     )
@@ -25,6 +26,7 @@ class Document(SQLModel, table=True):
     error_message: str | None = None
     doc_type: str = Field(default="general", nullable=False)
     department: str | None = None
+    visibility: str = Field(default="company", nullable=False)
     chunk_count: int | None = None
     created_at: datetime = utc_timestamp_field()
     updated_at: datetime = utc_timestamp_field()

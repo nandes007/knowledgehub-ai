@@ -21,6 +21,7 @@ def ingest_file(
     filename: str,
     doc_type: str = "general",
     department: str | None = None,
+    visibility: str = "company",
     llm: LLMProvider | None = None,
     vector_store: VectorStore | None = None,
 ) -> int:
@@ -43,6 +44,7 @@ def ingest_file(
         embeddings=embeddings,
         doc_type=doc_type,
         department=department,
+        visibility=visibility,
     )
 
 
@@ -71,6 +73,7 @@ def ingest_document(
                 filename=document.filename,
                 doc_type=document.doc_type,
                 department=document.department,
+                visibility=document.visibility,
                 llm=llm,
                 vector_store=vector_store,
             )

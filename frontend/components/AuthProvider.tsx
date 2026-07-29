@@ -11,7 +11,7 @@ type AuthContextValue = {
   // localStorage (which only exists client-side).
   isReady: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName?: string) => Promise<void>;
+  register: (email: string, password: string, displayName?: string, department?: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -30,8 +30,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(accessToken);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, displayName?: string) => {
-    const { accessToken } = await registerAccount(email, password, displayName);
+  const register = useCallback(async (email: string, password: string, displayName?: string, department?: string) => {
+    const { accessToken } = await registerAccount(email, password, displayName, department);
     setToken(accessToken);
   }, []);
 

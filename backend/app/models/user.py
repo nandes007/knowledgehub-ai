@@ -14,4 +14,5 @@ class User(SQLModel, table=True):
     password_hash: str
     display_name: str | None = None
     role: str = Field(default="member", nullable=False)
+    department: str | None = None
     created_at: datetime = utc_timestamp_field()

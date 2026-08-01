@@ -211,6 +211,61 @@ export async function deleteDocument(documentId: string): Promise<void> {
   }
 }
 
+export type Me = {
+  email: string;
+  displayName: string | null;
+  role: string;
+};
+
+export async function getMe(): Promise<Me> {
+  const response = await apiFetch(`${API_URL}/auth/me`);
+  if (!response.ok) {
+    throw new Error(`Failed to load profile: ${response.status}`);
+  }
+  const { email, display_name, role } = (await response.json()) as {
+    email: string;
+    display_name: string | null;
+    role: string;
+  };
+  return { email, displayName: display_name, role };
+}
+
+export type Stats = {
+  messagesPerDay: { date: string; count: number }[];
+  documentCount: number;
+  estimatedCostUsd: number;
+  documentsPerUser: { email: string; count: number }[];
+  costPerDay: { date: string; costUsd: number }[];
+};
+
+// The API is the real gate (403 for non-admins); the admin page matches on
+// this message to redirect rather than render an error.
+export const ADMIN_REQUIRED = "Admin access required.";
+
+export async function getStats(): Promise<Stats> {
+  const response = await apiFetch(`${API_URL}/stats`);
+  if (response.status === 403) {
+    throw new Error(ADMIN_REQUIRED);
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to load stats: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    messages_per_day: { date: string; count: number }[];
+    document_count: number;
+    estimated_cost_usd: number;
+    documents_per_user: { email: string; count: number }[];
+    cost_per_day: { date: string; cost_usd: number }[];
+  };
+  return {
+    messagesPerDay: data.messages_per_day,
+    documentCount: data.document_count,
+    estimatedCostUsd: data.estimated_cost_usd,
+    documentsPerUser: data.documents_per_user,
+    costPerDay: data.cost_per_day.map(({ date, cost_usd }) => ({ date, costUsd: cost_usd })),
+  };
+}
+
 export type AuthResult = { accessToken: string };
 
 export async function registerAccount(

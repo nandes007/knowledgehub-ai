@@ -106,6 +106,29 @@ def test_login_rejects_an_unknown_email(anon_client):
     assert response.status_code == 401
 
 
+def test_me_returns_the_current_users_email_and_role(client, db_engine, test_user_id):
+    response = client.get("/auth/me")
+
+    assert response.status_code == 200
+    assert response.json() == {"email": "test-user@example.com", "display_name": None, "role": "member"}
+
+
+def test_me_reflects_an_admin_role(client, db_engine, test_user_id):
+    with Session(db_engine) as session:
+        user = session.get(User, test_user_id)
+        user.role = "admin"
+        session.add(user)
+        session.commit()
+
+    assert client.get("/auth/me").json()["role"] == "admin"
+
+
+def test_me_without_a_token_returns_401(anon_client):
+    response = anon_client.get("/auth/me")
+
+    assert response.status_code == 401
+
+
 def test_protected_route_without_a_token_returns_401(anon_client):
     response = anon_client.get("/conversations")
 

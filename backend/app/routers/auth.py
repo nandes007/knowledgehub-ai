@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
-from app.deps import SessionDep
+from app.deps import CurrentUserDep, SessionDep
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import LoginRequest, MeResponse, RegisterRequest, TokenResponse
 from app.services.auth import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -26,6 +26,11 @@ def register(payload: RegisterRequest, session: SessionDep) -> TokenResponse:
     session.refresh(user)
 
     return TokenResponse(access_token=create_access_token(user.id))
+
+
+@router.get("/me", response_model=MeResponse)
+def me(current_user: CurrentUserDep) -> User:
+    return current_user
 
 
 @router.post("/login", response_model=TokenResponse)

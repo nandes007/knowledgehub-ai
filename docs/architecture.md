@@ -30,6 +30,8 @@ Vector store convention (Chroma): every chunk gets a deterministic ID
 
 Retrieval filters on `visibility`/`department` (see `app/services/rag.py`), not `user_id`: a `company`-visibility doc is retrievable by anyone, a `department`-visibility doc only by askers in that same department. `role = 'admin'` skips the filter entirely.
 
+Retrieval is hybrid when `HYBRID_SEARCH=true` (default): dense vector search and BM25 each return 20 candidates under the same visibility filter, merged by reciprocal rank fusion, top 5 prompted. BM25 is scored over the filtered corpus at query time rather than a second persisted index — nothing to keep in sync on ingest or delete. Set `HYBRID_SEARCH=false` to fall back to dense-only.
+
 ## Backups
 
 Postgres runs on Supabase (`DATABASE_URL` in `deploy/ansible/env.j2`), which

@@ -59,6 +59,49 @@ def test_upsert_returns_chunk_count(tmp_path):
     assert count == 2
 
 
+def test_keyword_query_finds_exact_code_a_bad_embedding_would_miss(tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path))
+    c1 = Chunk(text="General onboarding notes for new hires", index=0, h1=None, h2=None)
+    c2 = Chunk(text="Invoice INV-2024-8871 was paid in March", index=0, h1=None, h2=None)
+    store.upsert_chunks(document_id="doc-1", user_id="u1", filename="a.md", chunks=[c1], embeddings=[[1.0, 0.0]])
+    store.upsert_chunks(document_id="doc-2", user_id="u1", filename="b.md", chunks=[c2], embeddings=[[1.0, 0.0]])
+
+    results = store.keyword_query("INV-2024-8871", top_k=1)
+
+    assert len(results) == 1
+    assert results[0]["document_id"] == "doc-2"
+    assert results[0]["filename"] == "b.md"
+
+
+def test_keyword_query_filters_by_where_clause(tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path))
+    c1 = Chunk(text="secret code ZULU", index=0, h1=None, h2=None)
+    c2 = Chunk(text="secret code ZULU", index=0, h1=None, h2=None)
+    store.upsert_chunks(document_id="doc-1", user_id="user1", filename="a.md", chunks=[c1], embeddings=[[1.0, 0.0]])
+    store.upsert_chunks(document_id="doc-2", user_id="user2", filename="b.md", chunks=[c2], embeddings=[[1.0, 0.0]])
+
+    results = store.keyword_query("ZULU", top_k=5, where={"user_id": "user1"})
+
+    assert [r["user_id"] for r in results] == ["user1"]
+
+
+def test_keyword_query_reflects_ingest_and_delete(tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path))
+    chunk = Chunk(text="policy code ALPHA-7", index=0, h1=None, h2=None)
+    store.upsert_chunks(document_id="doc-1", user_id="u1", filename="a.md", chunks=[chunk], embeddings=[[1.0, 0.0]])
+    assert store.keyword_query("ALPHA-7", top_k=5)
+
+    store.delete_by_document("doc-1")
+
+    assert store.keyword_query("ALPHA-7", top_k=5) == []
+
+
+def test_keyword_query_on_empty_store_returns_nothing(tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path))
+
+    assert store.keyword_query("anything", top_k=5) == []
+
+
 def test_delete_by_document_removes_only_that_documents_chunks(tmp_path):
     store = VectorStore(persist_dir=str(tmp_path))
     c1 = Chunk(text="doc1 content", index=0, h1=None, h2=None)

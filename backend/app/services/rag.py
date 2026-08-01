@@ -1,9 +1,12 @@
 from collections.abc import Iterator
 
+from app.config import settings
 from app.services.llm import LLMProvider, TokenUsage
 from ingestion.index import VectorStore
 
 _TOP_K = 5
+_CANDIDATE_K = 20
+_RRF_K = 60
 _CHUNK_PREVIEW_LENGTH = 200
 
 # ponytail: hardcoded company; swap for the logged-in user's tenant when multi-tenant lands
@@ -48,6 +51,29 @@ def _visibility_where(*, department: str | None, role: str) -> dict | None:
     return conditions[0] if len(conditions) == 1 else {"$or": conditions}
 
 
+def _reciprocal_rank_fusion(*ranked_lists: list[dict]) -> list[dict]:
+    """Rerank merged dense + sparse candidates by RRF: a chunk that both arms
+    rank highly beats one that only a single arm loves."""
+    scores: dict[str, float] = {}
+    by_id: dict[str, dict] = {}
+    for ranked in ranked_lists:
+        for rank, match in enumerate(ranked):
+            scores[match["id"]] = scores.get(match["id"], 0.0) + 1 / (_RRF_K + rank + 1)
+            by_id[match["id"]] = match
+    return [by_id[id_] for id_ in sorted(scores, key=lambda i: scores[i], reverse=True)]
+
+
+def _retrieve(question: str, embedding: list[float], store: VectorStore, where: dict | None) -> list[dict]:
+    # ponytail: RRF is the rerank. Skipped a cross-encoder / Cohere reranker - that's a
+    # heavyweight dep (torch) or a paid API call per query for gains Task 28's evals
+    # haven't shown we need yet.
+    if not settings.hybrid_search:
+        return store.query(embedding, top_k=_TOP_K, where=where)
+    dense = store.query(embedding, top_k=_CANDIDATE_K, where=where)
+    sparse = store.keyword_query(question, top_k=_CANDIDATE_K, where=where)
+    return _reciprocal_rank_fusion(dense, sparse)[:_TOP_K]
+
+
 def stream_answer(
     question: str,
     *,
@@ -59,7 +85,7 @@ def stream_answer(
 ) -> tuple[Iterator[str], list[dict], TokenUsage]:
     query_embedding = llm.embed_texts([question])[0]
     where = _visibility_where(department=department, role=role)
-    matches = vector_store.query(query_embedding, top_k=_TOP_K, where=where)
+    matches = _retrieve(question, query_embedding, vector_store, where)
 
     context = "\n\n---\n\n".join(m["text"] for m in matches)
     history_block = ""

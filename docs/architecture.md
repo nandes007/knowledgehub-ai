@@ -32,6 +32,8 @@ Retrieval filters on `visibility`/`department` (see `app/services/rag.py`), not 
 
 Retrieval is hybrid when `HYBRID_SEARCH=true` (default): dense vector search and BM25 each return 20 candidates under the same visibility filter, merged by reciprocal rank fusion, top 5 prompted. BM25 is scored over the filtered corpus at query time rather than a second persisted index — nothing to keep in sync on ingest or delete. Set `HYBRID_SEARCH=false` to fall back to dense-only.
 
+Admin stats (`GET /stats`, rendered by `/admin`) aggregate straight from `messages`/`documents` — messages and cost per day over a 30-day window, documents per user, all-time estimated cost. No rollup table: the row counts here are small enough that a `GROUP BY` per page load is cheaper than keeping a summary in sync. `role = 'admin'` is enforced server-side; the page only redirects on the API's 403, and `GET /auth/me` exists so the UI can decide whether to offer the link at all.
+
 ## Backups
 
 Postgres runs on Supabase (`DATABASE_URL` in `deploy/ansible/env.j2`), which

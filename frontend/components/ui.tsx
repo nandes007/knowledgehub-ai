@@ -77,6 +77,42 @@ export function StatusStamp({ status }: { status: DocumentStatus }) {
   );
 }
 
+// ponytail: horizontal CSS bars instead of a charting dependency — three
+// series of one number per label is all the admin dashboard plots. Reach for a
+// real chart lib when it needs axes, tooltips, or more than one series.
+export function BarChart({
+  data,
+  formatValue = (value: number) => String(value),
+  emptyMessage = "No data yet.",
+}: {
+  data: { label: string; value: number }[];
+  formatValue?: (value: number) => string;
+  emptyMessage?: string;
+}) {
+  if (data.length === 0) return <p className="text-sm text-ink-muted">{emptyMessage}</p>;
+
+  const max = Math.max(...data.map((point) => point.value));
+
+  return (
+    <ul className="space-y-1.5">
+      {data.map((point) => (
+        <li key={point.label} className="flex items-center gap-3 text-sm">
+          <span className="w-40 shrink-0 truncate font-mono text-xs text-ink-muted" title={point.label}>
+            {point.label}
+          </span>
+          <span className="h-3 flex-1 rounded-[2px] bg-ink/5" aria-hidden="true">
+            <span
+              className="block h-full rounded-[2px] bg-brass"
+              style={{ width: max > 0 ? `${(point.value / max) * 100}%` : "0%" }}
+            />
+          </span>
+          <span className="w-20 shrink-0 text-right tabular-nums text-ink">{formatValue(point.value)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function SealMark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true">

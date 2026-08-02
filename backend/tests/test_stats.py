@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from sqlmodel import Session
 
@@ -49,3 +50,50 @@ def test_stats_returns_message_counts_doc_count_and_estimated_cost(client, db_en
     assert body["document_count"] == 1
     assert sum(day["count"] for day in body["messages_per_day"]) == 2
     assert body["estimated_cost_usd"] == 0.0003
+
+
+def test_stats_returns_documents_per_user(client, other_client, db_engine, test_user_id, other_user_id):
+    _make_admin(db_engine, test_user_id)
+
+    with Session(db_engine) as session:
+        for index, owner in enumerate([test_user_id, other_user_id, other_user_id]):
+            session.add(
+                Document(
+                    user_id=owner,
+                    filename=f"{index}.md",
+                    content_type="text/markdown",
+                    file_path=f"/tmp/{index}.md",
+                    file_hash=f"hash{index}",
+                )
+            )
+        session.commit()
+
+    body = client.get("/stats").json()
+
+    assert body["documents_per_user"] == [
+        {"email": "other-user@example.com", "count": 2},
+        {"email": "test-user@example.com", "count": 1},
+    ]
+
+
+def test_stats_returns_cost_per_day(client, db_engine, test_user_id):
+    _make_admin(db_engine, test_user_id)
+
+    conversation_id = uuid.UUID(client.post("/conversations").json()["id"])
+
+    with Session(db_engine) as session:
+        session.add(
+            Message(conversation_id=conversation_id, role="assistant", content="a", token_count=1000)
+        )
+        session.add(
+            Message(conversation_id=conversation_id, role="assistant", content="b", token_count=2000)
+        )
+        # User messages aren't billed by this estimate, so they must not add cost.
+        session.add(Message(conversation_id=conversation_id, role="user", content="hi", token_count=5000))
+        session.commit()
+
+    body = client.get("/stats").json()
+
+    assert body["cost_per_day"] == [
+        {"date": str(date.today()), "cost_usd": 0.0009},
+    ]

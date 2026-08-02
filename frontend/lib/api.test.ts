@@ -3,6 +3,8 @@ import {
   createConversation,
   deleteDocument,
   getConversationMessages,
+  getMe,
+  getStats,
   listConversations,
   listDocuments,
   loginAccount,
@@ -411,5 +413,60 @@ describe("loginAccount", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(loginAccount("user@example.com", "wrong")).rejects.toThrow("Invalid email or password.");
+  });
+});
+
+describe("getMe", () => {
+  it("GETs /auth/me and camelCases the profile", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ email: "a@b.com", display_name: "Ada", role: "admin" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const me = await getMe();
+
+    expect(me).toEqual({ email: "a@b.com", displayName: "Ada", role: "admin" });
+    expect(fetchMock.mock.calls[0][0]).toContain("/auth/me");
+  });
+
+  it("throws when the profile can't be loaded", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 500 })));
+
+    await expect(getMe()).rejects.toThrow("Failed to load profile: 500");
+  });
+});
+
+describe("getStats", () => {
+  it("GETs /stats and camelCases the payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          messages_per_day: [{ date: "2026-08-01", count: 3 }],
+          document_count: 7,
+          estimated_cost_usd: 0.42,
+          documents_per_user: [{ email: "a@b.com", count: 4 }],
+          cost_per_day: [{ date: "2026-08-01", cost_usd: 0.12 }],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stats = await getStats();
+
+    expect(stats).toEqual({
+      messagesPerDay: [{ date: "2026-08-01", count: 3 }],
+      documentCount: 7,
+      estimatedCostUsd: 0.42,
+      documentsPerUser: [{ email: "a@b.com", count: 4 }],
+      costPerDay: [{ date: "2026-08-01", costUsd: 0.12 }],
+    });
+    expect(fetchMock.mock.calls[0][0]).toContain("/stats");
+  });
+
+  it("throws a friendly message when the user isn't an admin", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("forbidden", { status: 403 })));
+
+    await expect(getStats()).rejects.toThrow("Admin access required.");
   });
 });

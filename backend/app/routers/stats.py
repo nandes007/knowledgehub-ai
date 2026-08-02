@@ -7,6 +7,7 @@ from sqlmodel import select
 from app.deps import CurrentUserDep, SessionDep
 from app.models.document import Document
 from app.models.message import Message
+from app.models.user import User
 
 router = APIRouter()
 
@@ -37,8 +38,28 @@ def get_stats(session: SessionDep, current_user: CurrentUserDep) -> dict:
         select(func.coalesce(func.sum(Message.token_count), 0)).where(Message.role == "assistant")
     ).one()
 
+    documents_per_user = session.exec(
+        select(User.email, func.count(Document.id))
+        .join(Document, Document.user_id == User.id)
+        .group_by(User.email)
+        .order_by(func.count(Document.id).desc(), User.email)
+    ).all()
+
+    tokens_per_day = session.exec(
+        select(day_column, func.coalesce(func.sum(Message.token_count), 0))
+        .where(Message.created_at >= since, Message.role == "assistant")
+        .group_by(day_column)
+        .order_by(day_column)
+    ).all()
+
     return {
         "messages_per_day": [{"date": str(day), "count": count} for day, count in rows],
         "document_count": document_count,
-        "estimated_cost_usd": round((total_tokens / 1000) * _PRICE_PER_1K_TOKENS_USD, 4),
+        "estimated_cost_usd": _cost_usd(total_tokens),
+        "documents_per_user": [{"email": email, "count": count} for email, count in documents_per_user],
+        "cost_per_day": [{"date": str(day), "cost_usd": _cost_usd(tokens)} for day, tokens in tokens_per_day],
     }
+
+
+def _cost_usd(tokens: int) -> float:
+    return round((tokens / 1000) * _PRICE_PER_1K_TOKENS_USD, 4)

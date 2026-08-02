@@ -7,9 +7,15 @@ import { useAuth } from "./AuthProvider";
 import { useConversations } from "./ConversationsProvider";
 import { SealMark } from "./ui";
 
+function navLinkClass(isActive: boolean): string {
+  return `block rounded-sm px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ledger ${
+    isActive ? "bg-rule-dark text-ledger-ink" : "text-ledger-ink-muted hover:bg-rule-dark hover:text-ledger-ink"
+  }`;
+}
+
 export function Sidebar() {
   const { conversations, loadError, createAndAdd } = useConversations();
-  const { logout } = useAuth();
+  const { isAdmin, logout } = useAuth();
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
   const router = useRouter();
@@ -70,17 +76,14 @@ export function Sidebar() {
             + New chat
           </button>
           {createError && <p className="text-xs text-stamp-void-on-dark">{createError}</p>}
-          <Link
-            href="/knowledge"
-            onClick={() => setIsOpen(false)}
-            className={`block rounded-sm px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ledger ${
-              pathname === "/knowledge"
-                ? "bg-rule-dark text-ledger-ink"
-                : "text-ledger-ink-muted hover:bg-rule-dark hover:text-ledger-ink"
-            }`}
-          >
+          <Link href="/knowledge" onClick={() => setIsOpen(false)} className={navLinkClass(pathname === "/knowledge")}>
             Knowledge base
           </Link>
+          {isAdmin && (
+            <Link href="/admin" onClick={() => setIsOpen(false)} className={navLinkClass(pathname === "/admin")}>
+              Admin
+            </Link>
+          )}
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-3">
           {loadError ? (

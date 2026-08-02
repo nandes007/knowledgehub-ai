@@ -1,11 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
-import { loginAccount, registerAccount } from "@/lib/api";
+import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
+import { getMe, loginAccount, registerAccount } from "@/lib/api";
 import { clearToken, getToken, setToken, subscribeToken } from "@/lib/auth";
 
 type AuthContextValue = {
   token: string | null;
+  // Only used to decide whether to *offer* the admin page. The API's 403 is
+  // the actual gate, so a failed/slow profile fetch just hides the link.
+  isAdmin: boolean;
   // False on the server and on the very first client render, so the route
   // guard doesn't redirect to /login before it's had a chance to read
   // localStorage (which only exists client-side).
@@ -24,6 +27,23 @@ const noopSubscribe = () => () => {};
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const token = useSyncExternalStore(subscribeToken, getToken, () => null);
   const isReady = useSyncExternalStore(noopSubscribe, alwaysReady, notReadyOnServer);
+  // Held as "the token we confirmed admin for" rather than a bare boolean, so
+  // logging out or switching accounts drops the privilege without a reset effect.
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const isAdmin = token !== null && adminToken === token;
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    getMe()
+      .then((me) => {
+        if (!cancelled && me.role === "admin") setAdminToken(token);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const login = useCallback(async (email: string, password: string) => {
     const { accessToken } = await loginAccount(email, password);
@@ -40,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ token, isReady, login, register, logout }}>
+    <AuthContext.Provider value={{ token, isAdmin, isReady, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

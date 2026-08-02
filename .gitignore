@@ -26,6 +26,9 @@ out/
 backend/.chroma/
 backend/uploads/
 
+# eval indexes (rebuilt from evals/corpus on demand)
+backend/evals/.chroma-eval*/
+
 # editors / os
 .DS_Store
 .idea/

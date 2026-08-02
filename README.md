@@ -74,9 +74,10 @@ Frontend at `http://localhost:3000`, backend at `http://localhost:8000` (`/healt
 - [`docs/architecture.md`](docs/architecture.md) — data flow, diagrams, design decisions, backup approach
 - [`docs/api-contract.md`](docs/api-contract.md) — endpoints, request/response shapes, SSE event format
 - [`docs/deployment-plan.md`](docs/deployment-plan.md) — the live-deployment setup (IPv6-only host, Cloudflare, Podman, Supabase)
+- [`docs/evals.md`](docs/evals.md) — retrieval + RAGAS evaluation: method, baseline numbers, and what the hybrid-search experiment measured
 - [`knowledgehub-ai.md`](knowledgehub-ai.md) — full project plan
 - [`tasks/todo.md`](tasks/todo.md) — task-by-task build tracker, linked to GitHub issues
 
 ## What's next
 
-MVP scope (auth, streaming chat, upload/ingest, citations, deploy, observability, hardening) is done. Planned next: department-scoped document visibility, hybrid search + reranking, an admin dashboard, and a RAGAS-based retrieval eval suite — see [`knowledgehub-ai.md`](knowledgehub-ai.md) for the full v2 plan.
+MVP scope (auth, streaming chat, upload/ingest, citations, deploy, observability, hardening) is done, along with department-scoped visibility, hybrid search, an admin dashboard, and the evaluation suite in [`docs/evals.md`](docs/evals.md). Planned next: exact-identifier eval questions to settle the `HYBRID_SEARCH` default, and a larger corpus so `recall@5` regains signal — see [`knowledgehub-ai.md`](knowledgehub-ai.md) for the full v2 plan.

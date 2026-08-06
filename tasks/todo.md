@@ -43,7 +43,7 @@ Master plan: [`../knowledgehub-ai.md`](../knowledgehub-ai.md). One file per task
 - [ ] [25 Department visibility](25-v2-department-visibility.md) — [#26](https://github.com/nandes007/knowledgehub-ai/issues/26)
 - [x] [26 Hybrid search + rerank](26-v2-hybrid-search-rerank.md) — [#27](https://github.com/nandes007/knowledgehub-ai/issues/27)
 - [x] [27 Admin dashboard](27-v2-admin-dashboard.md) — [#28](https://github.com/nandes007/knowledgehub-ai/issues/28)
-- [ ] [28 Evals: RAGAS + retrieval metrics](28-evals-ragas.md) — [#29](https://github.com/nandes007/knowledgehub-ai/issues/29)
+- [x] [28 Evals: RAGAS + retrieval metrics](28-evals-ragas.md) — [#29](https://github.com/nandes007/knowledgehub-ai/issues/29)
 
 ## Per-task loop
 ```bash

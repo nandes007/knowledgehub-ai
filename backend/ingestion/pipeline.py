@@ -24,6 +24,7 @@ def ingest_file(
     visibility: str = "company",
     llm: LLMProvider | None = None,
     vector_store: VectorStore | None = None,
+    chunk_size: int | None = None,
 ) -> int:
     llm = llm or get_llm_provider()
     vector_store = vector_store or get_vector_store()
@@ -33,7 +34,8 @@ def ingest_file(
         raise ValueError(
             "This file has no readable text — it may be a scanned PDF or image that needs OCR."
         )
-    chunks = chunk_markdown(text)
+    # chunk_size is an override for the eval harness; production uses the default.
+    chunks = chunk_markdown(text, **({"chunk_size": chunk_size} if chunk_size else {}))
     embeddings = llm.embed_texts([c.text for c in chunks])
 
     return vector_store.upsert_chunks(

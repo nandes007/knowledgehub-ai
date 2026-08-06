@@ -35,6 +35,8 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${plexSans.variable} ${plexSerif.variable} ${plexMono.variable} h-full antialiased`}
+      // ponytail: browser extensions (Dark Reader) inject attrs on <html> before hydration
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col font-sans">
         <AuthProvider>{children}</AuthProvider>

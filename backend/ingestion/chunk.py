@@ -15,11 +15,13 @@ class Chunk:
     h2: str | None
 
 
-def chunk_markdown(text: str) -> list[Chunk]:
+def chunk_markdown(
+    text: str, *, chunk_size: int = _CHUNK_SIZE, chunk_overlap: int = _CHUNK_OVERLAP
+) -> list[Chunk]:
     header_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=_HEADERS_TO_SPLIT_ON, strip_headers=False)
     sections = header_splitter.split_text(text)
 
-    char_splitter = RecursiveCharacterTextSplitter(chunk_size=_CHUNK_SIZE, chunk_overlap=_CHUNK_OVERLAP)
+    char_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     chunks: list[Chunk] = []
     for section in sections:

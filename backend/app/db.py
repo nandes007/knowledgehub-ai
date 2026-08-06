@@ -11,12 +11,13 @@ from app.config import settings
 engine = create_engine(settings.database_url)
 
 
-def run_migrations() -> None:
+def run_migrations(target_url: str | None = None) -> None:
     base_dir = Path(__file__).resolve().parent.parent
     alembic_ini_path = base_dir / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
-    safe_url = settings.database_url.replace("%", "%%")
+    url = target_url or settings.database_url
+    safe_url = url.replace("%", "%%")
     alembic_cfg.set_main_option("sqlalchemy.url", safe_url)
     command.upgrade(alembic_cfg, "head")
 

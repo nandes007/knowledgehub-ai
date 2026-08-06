@@ -8,8 +8,10 @@ from sqlalchemy.pool import StaticPool
 from app.db import run_migrations
 
 
-def test_run_migrations_executes_successfully():
-    run_migrations()
+def test_run_migrations_executes_successfully(tmp_path):
+    db_path = tmp_path / "test_run_migrations.db"
+    db_url = f"sqlite:///{db_path}"
+    run_migrations(target_url=db_url)
 
 
 def test_alembic_upgrade_and_downgrade(tmp_path):

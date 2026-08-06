@@ -11,7 +11,6 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app import models  # noqa: F401 - registers tables on SQLModel.metadata
 from app.config import settings
-from app.db import create_db_and_tables
 from app.logging_config import configure_logging
 from app.rate_limit import limiter
 from app.routers.auth import router as auth_router
@@ -25,7 +24,6 @@ _access_logger = logging.getLogger("app.access")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    create_db_and_tables()
     yield
 
 

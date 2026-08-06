@@ -90,6 +90,13 @@
         role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE
       no_log: true
 
+    - name: Drop existing database if reset_db is true
+      when: reset_db | default(false) | bool
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        state: absent
+
     - name: Create the database
       become_user: postgres
       community.postgresql.postgresql_db:
@@ -114,24 +121,14 @@
         role: "{{ db_user }}"
         privs: CONNECT,TEMP
 
-    # app/db.py sets `search_path TO knowledgehub, public` on every connection,
-    # and SQLModel's create_all does not create the schema itself.
-    - name: Create the application schema
-      become_user: postgres
-      community.postgresql.postgresql_schema:
-        login_db: "{{ db_name }}"
-        name: "{{ db_schema }}"
-        owner: "{{ db_user }}"
-
-    - name: Stop anyone creating objects in public
+    - name: Grant public schema privileges to app role
       become_user: postgres
       community.postgresql.postgresql_privs:
         login_db: "{{ db_name }}"
         type: schema
         objs: public
-        role: PUBLIC
-        privs: CREATE
-        state: absent
+        role: "{{ db_user }}"
+        privs: ALL
 
     # Databases for other projects on this server. They share db_user rather
     # than getting a role each: one credential to rotate, at the cost of that

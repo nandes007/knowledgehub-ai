@@ -1,24 +1,28 @@
 from collections.abc import Generator
+from pathlib import Path
 
-from sqlalchemy import Engine, event
-from sqlmodel import Session, SQLModel, create_engine
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import Engine
+from sqlmodel import Session, create_engine
 
 from app.config import settings
 
 engine = create_engine(settings.database_url)
 
-@event.listens_for(engine, "connect")
-def _set_search_path(dbapi_connection, connection_record) -> None:
-    # Pooled/proxied connections (e.g. Supabase's Supavisor) don't honor the
-    # `options=-c search_path=...` DSN param, so set it per real connection instead.
-    cursor = dbapi_connection.cursor()
-    cursor.execute("SET search_path TO knowledgehub, public")
-    cursor.close()
-    dbapi_connection.commit()
+
+def run_migrations() -> None:
+    base_dir = Path(__file__).resolve().parent.parent
+    alembic_ini_path = base_dir / "alembic.ini"
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
+    safe_url = settings.database_url.replace("%", "%%")
+    alembic_cfg.set_main_option("sqlalchemy.url", safe_url)
+    command.upgrade(alembic_cfg, "head")
 
 
 def create_db_and_tables() -> None:
-    SQLModel.metadata.create_all(engine)
+    run_migrations()
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -28,3 +32,4 @@ def get_session() -> Generator[Session, None, None]:
 
 def get_engine() -> Engine:
     return engine
+

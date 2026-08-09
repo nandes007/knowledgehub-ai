@@ -4,6 +4,8 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 COPY app ./app
 COPY ingestion ./ingestion
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
 RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime

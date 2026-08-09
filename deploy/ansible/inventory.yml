@@ -2,7 +2,7 @@ all:
   hosts:
     knowledgehub:
       # Server public IPv6. Your laptop needs IPv6 (or Cloudflare WARP) to reach it.
-      ansible_host: "knowledgehub.tailc79dc7.ts.net"
+      ansible_host: "nandes.tailc79dc7.ts.net"
   vars:
     domain: knowledgehubai.nandes.tech
     deploy_user: nandes
@@ -39,7 +39,7 @@ all:
     # Servers allowed to connect over the network, one /128 each. Everything
     # else is dropped by ufw; these still need TLS and the scram password.
     pg_client_hosts:
-      - 2407:6ac0:3:9d:abcd::1c4/128    # meeting-room-booking
+      - 2407:6ac0:3:9d:abcd::1c4/128 # meeting-room-booking
 
     # The app talks to the local PostgreSQL from postgres.yml. Set back to false
     # and re-run site.yml to fall back to Supabase.

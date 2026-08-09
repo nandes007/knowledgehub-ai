@@ -17,6 +17,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7",
     "bcrypt<4.1",  # passlib 1.7.4 doesn't support bcrypt's post-4.1 API (no `__about__`)
     "slowapi>=0.1.10",
+    "alembic>=1.13",
 ]
 
 [project.optional-dependencies]

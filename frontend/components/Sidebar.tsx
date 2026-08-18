@@ -144,10 +144,11 @@ export function Sidebar() {
           <button
             type="button"
             onClick={handleNewChat}
-            className={`flex w-full items-center gap-2.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-surface-primary transition-colors duration-120 hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+            className={`flex w-full items-center gap-2.5 rounded-lg bg-gold px-3 py-2 text-sm font-medium text-surface-primary transition-colors duration-120 hover:bg-gold-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
               isCollapsed ? "justify-center px-0" : ""
             }`}
             title="New chat"
+            aria-label="New chat"
           >
             <IconPlus size={16} />
             {!isCollapsed && <span>New chat</span>}
@@ -157,12 +158,13 @@ export function Sidebar() {
           <Link
             href="/knowledge"
             onClick={() => setIsOpen(false)}
-            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
               pathname === "/knowledge"
-                ? "bg-accent-muted text-accent"
+                ? "bg-gold-muted text-gold"
                 : "text-text-secondary hover:bg-border hover:text-text-primary"
             } ${isCollapsed ? "justify-center px-0" : ""}`}
             title="Knowledge base"
+            aria-label="Knowledge base"
           >
             <IconFolder size={16} />
             {!isCollapsed && <span>Knowledge base</span>}
@@ -172,12 +174,13 @@ export function Sidebar() {
             <Link
               href="/admin"
               onClick={() => setIsOpen(false)}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
                 pathname === "/admin"
-                  ? "bg-accent-muted text-accent"
+                  ? "bg-gold-muted text-gold"
                   : "text-text-secondary hover:bg-border hover:text-text-primary"
               } ${isCollapsed ? "justify-center px-0" : ""}`}
               title="Admin"
+              aria-label="Admin"
             >
               <IconChart size={16} />
               {!isCollapsed && <span>Admin</span>}
@@ -200,9 +203,9 @@ export function Sidebar() {
                       <Link
                         href={`/chat/${conversation.id}`}
                         onClick={() => setIsOpen(false)}
-                        className={`group flex items-center gap-2.5 truncate rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+                        className={`group flex items-center gap-2.5 truncate rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
                           conversation.id === activeId
-                            ? "border-l-[3px] border-l-accent bg-accent-muted/50 pl-[9px] font-medium text-text-primary"
+                            ? "border-l-[3px] border-l-gold bg-gold-muted/50 pl-[9px] font-medium text-text-primary"
                             : "text-text-secondary hover:bg-border hover:text-text-primary"
                         }`}
                       >
@@ -222,10 +225,11 @@ export function Sidebar() {
           <button
             type="button"
             onClick={handleLogout}
-            className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors duration-120 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+            className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors duration-120 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
               isCollapsed ? "justify-center px-0" : ""
             }`}
             title="Log out"
+            aria-label="Log out"
           >
             <IconLogout size={16} />
             {!isCollapsed && <span>Log out</span>}

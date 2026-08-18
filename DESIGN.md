@@ -10,19 +10,20 @@ Mode: **Operate**. Expression never outranks task, state, or a familiar affordan
 
 ## Color
 
-Strategy: **Dark-first** with warm-neutral surfaces (never pure black or cool gray) to reduce eye strain for extended reading. Structural chrome (shell, nav, content) all lives on the same dark surface hierarchy. Accent color is polished gold — the same vault continuity, more luminous on dark surfaces.
+Strategy: **Dark-first** with warm charcoal surfaces (never pure black) to reduce eye strain for extended reading. Structural chrome (shell, nav, content) all lives on the same dark surface hierarchy. Accent color is polished gold — the same vault continuity, luminous on dark surfaces.
 
 | Role | Token | Value | Use |
 |---|---|---|---|
-| Surface primary | `--surface-primary` | `#1A1816` | page background |
-| Surface raised | `--surface-raised` | `#242120` | cards, panels |
-| Surface overlay | `--surface-overlay` | `#2E2A28` | sidebar, modals |
-| Text primary | `--text-primary` | `#F0EDE8` | primary text (near-white) |
-| Text secondary | `--text-secondary` | `#9A948C` | secondary text |
-| Text tertiary | `--text-tertiary` | `#6B655D` | disabled, placeholder |
-| Accent (gold) | `--accent` | `#D4A745` | primary actions, active nav, focus, wordmark |
-| Accent hover | `--accent-hover` | `#E0B85A` | hover state for accent |
-| Accent muted | `--accent-muted` | `rgba(212,167,69,0.15)` | accent tint for backgrounds |
+| Surface primary | `--surface-primary` | `#0F0F11` | page background |
+| Surface raised | `--surface-raised` | `#18181B` | cards, panels |
+| Surface overlay | `--surface-overlay` | `#1E1E23` | sidebar, modals |
+| Surface input | `--surface-input` | `#131316` | text inputs, textareas |
+| Text primary | `--text-primary` | `#EDEDEF` | primary text (near-white) |
+| Text secondary | `--text-secondary` | `#8B8B8E` | secondary text |
+| Text tertiary | `--text-tertiary` | `#5A5A5D` | disabled, placeholder |
+| Gold | `--gold` | `#D4A745` | primary actions, active nav, focus, wordmark |
+| Gold hover | `--gold-hover` | `#E8BE5A` | hover state for gold accent |
+| Gold muted | `--gold-muted` | `rgba(212,167,69,0.15)` | accent tint for backgrounds |
 | Border | `--border` | `rgba(255,255,255,0.08)` | default hairlines |
 | Border hover | `--border-hover` | `rgba(255,255,255,0.14)` | hover-state hairlines |
 | User bubble | `--user-bubble` | `#2A2520` | user message background — warm dark brown, a deliberate break from surface colors, retaining "your request going into the vault" |
@@ -32,6 +33,8 @@ Strategy: **Dark-first** with warm-neutral surfaces (never pure black or cool gr
 | Status pending bg | `--status-pending-bg` | `rgba(251,191,36,0.12)` | "Processing" badge background |
 | Status void | `--status-void` | `#F87171` | "Void"/failed/destructive |
 | Status void bg | `--status-void-bg` | `rgba(248,113,113,0.12)` | "Void" badge background |
+
+Tailwind `@theme inline` maps `--gold` values to both `--color-gold-*` and backward-compatible `--color-accent-*` aliases.
 
 No light mode. No OS-level dark mode toggle. The app is dark-first.
 
@@ -52,7 +55,7 @@ Font loading uses `next/font/google` with CSS variables `--font-inter` and `--fo
 - **Card / Panel** — surface-raised background, 1px border at 8% opacity, deep shadow. Rounded-xl for modern feel. No nested cards.
 - **Input** — surface-primary background, full-border rounded style, gold focus ring.
 - **StatusPill** — rounded-full pill shape, colored background-tint + colored text, mono uppercase, tracked. No border.
-- **CitationTab** — rounded-full pill with accent-muted bg and gold text; expands (existing `<details>` pattern kept) to the chunk preview on surface-raised background.
+- **CitationTab** — rounded-full pill with gold-muted bg and gold text; expands (existing `<details>` pattern kept) to the chunk preview on surface-raised background.
 - **Wordmark** — an Inter semibold span with a gold-colored "K" followed by "nowledgeHub" in text-primary. Replaces the SealMark SVG seal. Used on auth screens and the sidebar header.
 - **Message layout** — the assistant's answer renders as plain text directly on the surface (no card/bubble). The user's message is a right-aligned warm dark pill (`--user-bubble`), capped at 80% width. The "Thinking..." state is three animated dots pulsing in sequence.
 

@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  /* ── Surfaces (warm-neutral, never pure black or cool gray) ── */
-  --surface-primary: #1a1816;
-  --surface-raised: #242120;
-  --surface-overlay: #2e2a28;
+  /* ── Surfaces (warm charcoal, dark-mode-primary) ── */
+  --surface-primary: #0f0f11;
+  --surface-raised: #18181b;
+  --surface-overlay: #1e1e23;
+  --surface-input: #131316;
 
   /* ── Text ── */
-  --text-primary: #f0ede8;
-  --text-secondary: #9a948c;
-  --text-tertiary: #6b655d;
+  --text-primary: #ededef;
+  --text-secondary: #8b8b8e;
+  --text-tertiary: #5a5a5d;
 
-  /* ── Accent (polished gold) ── */
-  --accent: #d4a745;
-  --accent-hover: #e0b85a;
-  --accent-muted: rgba(212, 167, 69, 0.15);
+  /* ── Gold (polished gold accent) ── */
+  --gold: #d4a745;
+  --gold-hover: #e8be5a;
+  --gold-muted: rgba(212, 167, 69, 0.15);
 
   /* ── Borders ── */
   --border: rgba(255, 255, 255, 0.08);
@@ -36,14 +37,21 @@
   --color-surface-primary: var(--surface-primary);
   --color-surface-raised: var(--surface-raised);
   --color-surface-overlay: var(--surface-overlay);
+  --color-surface-input: var(--surface-input);
 
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
 
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-muted: var(--accent-muted);
+  /* Gold tokens (canonical) */
+  --color-gold: var(--gold);
+  --color-gold-hover: var(--gold-hover);
+  --color-gold-muted: var(--gold-muted);
+
+  /* Accent aliases — backward-compatible with existing component classes */
+  --color-accent: var(--gold);
+  --color-accent-hover: var(--gold-hover);
+  --color-accent-muted: var(--gold-muted);
 
   --color-border: var(--border);
   --color-border-hover: var(--border-hover);
@@ -61,6 +69,11 @@
   --font-mono: var(--font-jetbrains);
 }
 
+/* ── Base ── */
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--surface-primary);
   color: var(--text-primary);
@@ -68,8 +81,32 @@ body {
 }
 
 ::selection {
-  background: var(--accent);
+  background: var(--gold);
   color: var(--surface-primary);
+}
+
+/* ── Thin scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-hover) transparent;
 }
 
 /* ── Message fade-in ── */
@@ -135,10 +172,15 @@ body {
   animation-delay: 0.3s;
 }
 
+/* ── Reduced motion: collapse ALL animation/transition durations ── */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in,
-  .animate-stamp-in {
-    animation-duration: 1ms;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
   }
 
   .thinking-dot {

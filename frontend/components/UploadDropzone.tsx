@@ -2,9 +2,19 @@
 
 import { useRef, useState } from "react";
 import { uploadDocument, type Visibility } from "@/lib/api";
-import { Input, Label } from "@/components/ui";
+import { Label } from "@/components/ui";
 
 const ACCEPTED_TYPES = ".pdf,.docx,.pptx,.md";
+
+function IconCloudUpload() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-tertiary">
+      <path d="M10.667 21.333 16 16l5.333 5.333M16 16v10.667" />
+      <path d="M27.04 23.373A6.667 6.667 0 0 0 24 10.667h-1.68A10.667 10.667 0 1 0 4 22" />
+      <path d="M10.667 21.333 16 16l5.333 5.333" />
+    </svg>
+  );
+}
 
 export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -38,7 +48,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
             id="visibility"
             value={visibility}
             onChange={(event) => setVisibility(event.target.value as Visibility)}
-            className="w-full rounded-t-sm border-0 border-b-2 border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-brass focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           >
             <option value="company">Whole company</option>
             <option value="department">My department only</option>
@@ -47,12 +57,13 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
         {visibility === "department" && (
           <div className="space-y-1">
             <Label htmlFor="department">Department</Label>
-            <Input
+            <input
               id="department"
               type="text"
               required
               value={department}
               onChange={(event) => setDepartment(event.target.value)}
+              className="w-full rounded-lg border border-border bg-surface-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
         )}
@@ -74,10 +85,13 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") inputRef.current?.click();
         }}
-        className={`cursor-pointer rounded-sm border-2 border-dashed p-8 text-center text-sm transition-colors ${
-          isDragging ? "border-brass bg-brass/10 text-ink" : "border-rule text-ink-muted hover:border-brass/60"
+        className={`flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed p-8 text-center text-sm transition-all duration-120 ${
+          isDragging
+            ? "border-accent bg-accent-muted text-text-primary"
+            : "border-border text-text-secondary hover:border-accent/40 hover:text-text-primary"
         }`}
       >
+        <IconCloudUpload />
         <input
           ref={inputRef}
           type="file"
@@ -89,8 +103,9 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
             event.target.value = "";
           }}
         />
-        {isUploading ? "Uploading…" : "Drag and drop files here, or click to browse (PDF, DOCX, PPTX, MD)"}
-        {error && <p className="mt-2 text-stamp-void">{error}</p>}
+        {isUploading ? "Uploading…" : "Drag and drop files here, or click to browse"}
+        <span className="text-xs text-text-tertiary">PDF, DOCX, PPTX, MD</span>
+        {error && <p className="mt-1 text-status-void">{error}</p>}
       </div>
     </div>
   );

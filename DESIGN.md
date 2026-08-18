@@ -6,56 +6,84 @@
 
 **The Vault.** KnowledgeHub AI is presented as a company's private vault: documents are assets deposited and catalogued, a question is a request at the teller window, and every answer returns as a stamped receipt naming exactly which holdings back it. Turnover-proofing is literal: the vault outlives the teller.
 
-Mode: **Operate**. Expression never outranks task, state, or a familiar affordance. The metaphor lives in accents — stamps, serials, ruled lines, one seal mark — never in relabeling core actions (buttons keep their plain verbs: Send, Upload, Delete, Log in).
+Mode: **Operate**. Expression never outranks task, state, or a familiar affordance. The metaphor lives in accents — status pills, gold highlights, one wordmark — never in relabeling core actions (buttons keep their plain verbs: Send, Upload, Delete, Log in).
 
 ## Color
 
-Strategy: **Restrained** (neutrals plus one committed accent). Scene: an office employee at a laptop through the workday, reading dense text repeatedly — content surfaces stay light or reads worse across a full day. Structural chrome (shell, nav) is dark, like a vault's interior; content (the ledger, the receipt) is paper-toned.
+Strategy: **Dark-first** with warm-neutral surfaces (never pure black or cool gray) to reduce eye strain for extended reading. Structural chrome (shell, nav, content) all lives on the same dark surface hierarchy. Accent color is polished gold — the same vault continuity, more luminous on dark surfaces.
 
 | Role | Token | Value | Use |
 |---|---|---|---|
-| Paper | `--paper` | `#F6F1E4` | content surface (cards, page background) |
-| Paper raised | `--paper-raised` | `#FBF8F0` | inputs, elevated panels |
-| Ink | `--ink` | `#241F1A` | primary text on paper |
-| Ink muted | `--ink-muted` | `#6B5F4F` | secondary text on paper |
-| Ledger (dark ground) | `--ledger` | `#16332B` | shell, nav, footer, dark chrome |
-| Ledger ink | `--ledger-ink` | `#EFE7D4` | text on ledger ground |
-| Ledger ink muted | `--ledger-ink-muted` | `#A9B8AE` | secondary text on ledger ground (tinted, never gray) |
-| Brass | `--brass` | `#B8863E` | primary actions, active nav, focus, the seal |
-| Brass strong | `--brass-strong` | `#8F6526` | brass text/icons needing more contrast |
-| Rule | `--rule` | `rgba(36,31,26,0.14)` | hairlines on paper |
-| Rule on dark | `--rule-dark` | `rgba(239,231,212,0.16)` | hairlines on ledger ground |
-| Void, on dark | `--stamp-void-on-dark` | `#E8927A` | error/void text on the ledger ground — `--stamp-void` itself is tuned for paper and fails contrast there |
-| Stamp ready | `--stamp-ready` | `#2F6B4F` | "FILED"/ready status |
-| Stamp pending | `--stamp-pending` | `#7D5422` | "PROCESSING" status (darkened from an initial `#A97634`, which measured 3.12:1 against its badge background — below the 4.5:1 floor) |
-| Stamp void | `--stamp-void` | `#A6402F` | "VOID"/failed status, destructive actions, errors |
+| Surface primary | `--surface-primary` | `#1A1816` | page background |
+| Surface raised | `--surface-raised` | `#242120` | cards, panels |
+| Surface overlay | `--surface-overlay` | `#2E2A28` | sidebar, modals |
+| Text primary | `--text-primary` | `#F0EDE8` | primary text (near-white) |
+| Text secondary | `--text-secondary` | `#9A948C` | secondary text |
+| Text tertiary | `--text-tertiary` | `#6B655D` | disabled, placeholder |
+| Accent (gold) | `--accent` | `#D4A745` | primary actions, active nav, focus, wordmark |
+| Accent hover | `--accent-hover` | `#E0B85A` | hover state for accent |
+| Accent muted | `--accent-muted` | `rgba(212,167,69,0.15)` | accent tint for backgrounds |
+| Border | `--border` | `rgba(255,255,255,0.08)` | default hairlines |
+| Border hover | `--border-hover` | `rgba(255,255,255,0.14)` | hover-state hairlines |
+| User bubble | `--user-bubble` | `#2A2520` | user message background — warm dark brown, a deliberate break from surface colors, retaining "your request going into the vault" |
+| Status ready | `--status-ready` | `#4ADE80` | "Filed" status foreground |
+| Status ready bg | `--status-ready-bg` | `rgba(74,222,128,0.12)` | "Filed" badge background |
+| Status pending | `--status-pending` | `#FBBF24` | "Processing" status foreground |
+| Status pending bg | `--status-pending-bg` | `rgba(251,191,36,0.12)` | "Processing" badge background |
+| Status void | `--status-void` | `#F87171` | "Void"/failed/destructive |
+| Status void bg | `--status-void-bg` | `rgba(248,113,113,0.12)` | "Void" badge background |
 
-Dark mode is not a literal color-inversion of this system: the ledger/paper split already supplies the dark-surface need (nav, shell) without an OS-level dark theme. No separate dark palette is defined for v1.
+No light mode. No OS-level dark mode toggle. The app is dark-first.
 
 ## Type
 
-Single family (IBM Plex) carrying three optical roles — a systemic choice, not a decorative pairing:
+Two families serving distinct optical roles:
 
-- **IBM Plex Serif** — headings, the wordmark, page titles. Ledger-book gravity.
-- **IBM Plex Sans** — body copy, labels, buttons, nav, everything a user reads to act.
-- **IBM Plex Mono** — citation serials, stamp codes, timestamps, document metadata, chunk counts. Reserved for real reference numbers and data, never decoration.
+- **Inter** — body copy, headings, labels, buttons, navigation, the wordmark. The modern SaaS standard: clean, highly legible at all sizes, excellent rendering across platforms.
+- **JetBrains Mono** — citation tabs, timestamps, document metadata, code blocks, status pills. Reserved for real reference numbers and data, never decoration.
 
-Tracking floor -0.04em on display sizes. Mono labels are the one earned tracking exception — a stamp's die-cut lettering is tracked in life: status stamps (Filed/Processing/Void) use +0.08em, citation tabs use +0.04em (a smaller badge reads better slightly tighter).
+Serif usage is eliminated entirely — headings use Inter semibold instead.
+
+Font loading uses `next/font/google` with CSS variables `--font-inter` and `--font-jetbrains`.
 
 ## Components
 
-- **Button** — primary: brass fill, ink text, no gradient; secondary: ink outline on paper; ghost: text-only, used for low-emphasis actions (logout, cancel).
-- **Card / Panel** — paper-raised surface, 1px `--rule` border, soft offset shadow (never a zero-offset glow). No nested cards.
-- **Input** — paper-raised surface, bottom-weighted rule instead of a full box border (a ledger form-field feel), brass focus ring.
-- **StatusStamp** — rectangular badge, mono uppercase, tracked, double-ruled border, colored by status role (ready/pending/void). Never rotated in data-table context (scanability first); the one place a stamp gets a physical "landing" motion is the chat citation moment below.
-- **CitationTab** — small tab-shaped chip in mono type; expands (existing `<details>` pattern kept) to the chunk preview. Shows the source filename — the API's `Source` type has no separate serial/reference number to display, and inventing one would be exactly the kind of fabricated specificity the product must not show. Revisit if the backend ever adds a real per-citation reference.
-- **SealMark** — a simple circular brass seal with a monogram, used as the wordmark anchor on auth screens and the sidebar header, and as the browser favicon (`app/icon.svg`, same mark as a static SVG since favicons render outside the page's component tree). The only illustrative asset in v1; not a full logo system.
-- **Message bubbles** — the assistant's answer is a paper receipt (paper-raised, ruled, shadowed), per the Color table above. The user's own message intentionally breaks the paper/ledger split and uses the dark ledger tone instead — read as "your request going into the vault," and the clearest way to separate the two speakers at a glance. This is a deliberate exception, not a slip.
+- **Button** — primary: gold fill, dark text, no gradient; secondary: border-only on dark; ghost: text-secondary, used for low-emphasis actions (logout, cancel).
+- **Card / Panel** — surface-raised background, 1px border at 8% opacity, deep shadow. Rounded-xl for modern feel. No nested cards.
+- **Input** — surface-primary background, full-border rounded style, gold focus ring.
+- **StatusPill** — rounded-full pill shape, colored background-tint + colored text, mono uppercase, tracked. No border.
+- **CitationTab** — rounded-full pill with accent-muted bg and gold text; expands (existing `<details>` pattern kept) to the chunk preview on surface-raised background.
+- **Wordmark** — an Inter semibold span with a gold-colored "K" followed by "nowledgeHub" in text-primary. Replaces the SealMark SVG seal. Used on auth screens and the sidebar header.
+- **Message layout** — the assistant's answer renders as plain text directly on the surface (no card/bubble). The user's message is a right-aligned warm dark pill (`--user-bubble`), capped at 80% width. The "Thinking..." state is three animated dots pulsing in sequence.
+
+## Sidebar
+
+The sidebar supports two states controlled by an `isCollapsed` boolean:
+
+- **Expanded**: 260px width, icon + text labels for all nav items, full conversation list.
+- **Collapsed**: 56px width (icon strip), icons only with title-attribute tooltips, conversation list hidden.
+- **Transition**: 200ms ease CSS transition on width.
+- **Active conversation**: 3px gold left-border accent instead of background highlight.
+- **Mobile**: slide-in overlay with backdrop-blur, unchanged behavior.
+
+## Chat Input
+
+The input area uses a floating `<textarea>` with auto-resize behavior:
+
+- JavaScript `scrollHeight` measurement on input event, clamped to 5 rows.
+- Circular gold send button inside the textarea container.
+- Enter to send, Shift+Enter for newline.
+- Container styled as a rounded card with subtle shadow.
 
 ## Motion
 
-One authored moment: when a streamed answer completes, its citation tabs "stamp" in — a quick scale/opacity settle timed like an ink stamp landing, exponential ease-out, ~180ms, staggered slightly per tab. `prefers-reduced-motion` cuts straight to the settled state. No other scripted entrance animation exists; hover/focus/disabled use ordinary instant or 120ms transitions.
+- **Message entry**: 150ms fade-in with 4px upward translate (`@keyframes fade-in`).
+- **Citation stamp-in**: 180ms scale/opacity settle, exponential ease-out, staggered per tab.
+- **Sidebar collapse/expand**: 200ms ease CSS transition on width.
+- **Thinking dots**: 1.2s pulsing animation, staggered by 150ms per dot.
+- **Button/nav hover**: 120ms `transition-colors`.
+- `prefers-reduced-motion` collapses all to 1ms / static state.
 
 ## What this is not
 
-No dark mode variant yet (see Color). No landing/marketing page (out of scope, tracked separately). No literal skeuomorphic textures (leather grain, embossed paper) — the vault reads through color, rule lines, stamps, and one seal mark, not through texture images.
+No light mode variant. No landing/marketing page (out of scope, tracked separately). No literal skeuomorphic textures — the vault reads through warm surfaces, gold accents, status pills, and one wordmark, not through texture images.

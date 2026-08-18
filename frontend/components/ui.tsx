@@ -4,11 +4,11 @@ import type { DocumentStatus } from "@/lib/api";
 // Shared primitives for the dark-mode design system (see DESIGN.md). Kept as one
 // small file, not a component library — four screens reuse these directly.
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-surface-primary hover:bg-accent-hover",
-  secondary: "border border-border-hover text-text-primary hover:bg-border",
+  primary: "bg-gold text-surface-primary hover:bg-gold-hover",
+  secondary: "border border-border text-text-primary hover:bg-border",
   ghost: "text-text-secondary hover:bg-border hover:text-text-primary",
   danger: "text-status-void hover:underline",
 };
@@ -21,7 +21,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-primary disabled:pointer-events-none disabled:opacity-50 ${BUTTON_STYLES[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-primary disabled:pointer-events-none disabled:opacity-50 ${BUTTON_STYLES[variant]} ${className}`}
     />
   );
 }
@@ -43,7 +43,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   return (
     <input
       {...props}
-      className={`w-full rounded-lg border border-border bg-surface-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50 ${className}`}
+      className={`h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold disabled:opacity-50 ${className}`}
     />
   );
 }
@@ -60,7 +60,7 @@ const STATUS_STYLES: Record<DocumentStatus, string> = {
   failed: "text-status-void bg-status-void-bg",
 };
 
-export function StatusPill({ status }: { status: DocumentStatus }) {
+export function StatusStamp({ status }: { status: DocumentStatus }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] ${STATUS_STYLES[status]}`}
@@ -69,6 +69,8 @@ export function StatusPill({ status }: { status: DocumentStatus }) {
     </span>
   );
 }
+
+export const StatusPill = StatusStamp;
 
 // ponytail: horizontal CSS bars instead of a charting dependency — three
 // series of one number per label is all the admin dashboard plots. Reach for a
@@ -95,7 +97,7 @@ export function BarChart({
           </span>
           <span className="h-3 flex-1 rounded-full bg-border" aria-hidden="true">
             <span
-              className="block h-full rounded-full bg-accent"
+              className="block h-full rounded-full bg-gold"
               style={{ width: max > 0 ? `${(point.value / max) * 100}%` : "0%" }}
             />
           </span>
@@ -109,7 +111,7 @@ export function BarChart({
 export function Wordmark({ collapsed = false, className = "" }: { collapsed?: boolean; className?: string }) {
   return (
     <span className={`font-sans text-sm font-semibold text-text-primary ${className}`}>
-      <span className="text-accent">K</span>
+      <span className="text-gold">K</span>
       {!collapsed && "nowledgeHub"}
     </span>
   );

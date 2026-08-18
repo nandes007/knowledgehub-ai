@@ -31,8 +31,8 @@ export default function LoginPage() {
   return (
     <Card className="w-full max-w-sm space-y-5 p-6">
       <div>
-        <h1 className="font-serif text-xl font-semibold text-ink">Log in</h1>
-        <p className="mt-1 text-sm text-ink-muted">Enter the vault.</p>
+        <h1 className="text-xl font-semibold text-text-primary">Log in</h1>
+        <p className="mt-1 text-sm text-text-secondary">Welcome back to KnowledgeHub.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
@@ -57,14 +57,14 @@ export default function LoginPage() {
             onChange={(event) => setPassword(event.target.value)}
           />
         </div>
-        {error && <p className="text-sm text-stamp-void">{error}</p>}
+        {error && <p className="text-sm text-status-void">{error}</p>}
         <Button type="submit" disabled={isSubmitting} className="w-full">
           {isSubmitting ? "Logging in…" : "Log in"}
         </Button>
       </form>
-      <p className="text-sm text-ink-muted">
+      <p className="text-sm text-text-secondary">
         No account?{" "}
-        <Link href="/register" className="font-medium text-brass-strong hover:underline">
+        <Link href="/register" className="font-medium text-accent hover:text-accent-hover hover:underline">
           Register
         </Link>
       </p>

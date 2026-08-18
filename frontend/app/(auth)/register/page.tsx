@@ -33,8 +33,8 @@ export default function RegisterPage() {
   return (
     <Card className="w-full max-w-sm space-y-5 p-6">
       <div>
-        <h1 className="font-serif text-xl font-semibold text-ink">Register</h1>
-        <p className="mt-1 text-sm text-ink-muted">Open an account with the vault.</p>
+        <h1 className="text-xl font-semibold text-text-primary">Register</h1>
+        <p className="mt-1 text-sm text-text-secondary">Create your KnowledgeHub account.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
@@ -78,16 +78,16 @@ export default function RegisterPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <p className="text-xs text-ink-muted">At least 8 characters.</p>
+          <p className="text-xs text-text-tertiary">At least 8 characters.</p>
         </div>
-        {error && <p className="text-sm text-stamp-void">{error}</p>}
+        {error && <p className="text-sm text-status-void">{error}</p>}
         <Button type="submit" disabled={isSubmitting} className="w-full">
           {isSubmitting ? "Creating account…" : "Register"}
         </Button>
       </form>
-      <p className="text-sm text-ink-muted">
+      <p className="text-sm text-text-secondary">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-brass-strong hover:underline">
+        <Link href="/login" className="font-medium text-accent hover:text-accent-hover hover:underline">
           Log in
         </Link>
       </p>

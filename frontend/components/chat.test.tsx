@@ -16,7 +16,12 @@ vi.mock("next/navigation", () => ({
 // Mock ConversationsProvider
 vi.mock("./ConversationsProvider", () => ({
   useConversations: () => ({
+    conversations: [],
+    activeId: null,
+    setActiveId: vi.fn(),
     addOrRename: vi.fn(),
+    registerFocusHandler: vi.fn(),
+    focusChatInput: vi.fn(),
   }),
 }));
 

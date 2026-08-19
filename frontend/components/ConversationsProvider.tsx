@@ -11,18 +11,24 @@ function deriveTitle(message: string): string {
 
 type ConversationsContextValue = {
   conversations: Conversation[];
+  activeId: string | null;
+  setActiveId: (id: string | null) => void;
   isLoading: boolean;
   loadError: string | null;
   createAndAdd: () => Promise<Conversation>;
   addOrRename: (id: string, firstMessage: string) => void;
+  focusChatInput: () => void;
+  registerFocusHandler: (handler: () => void) => () => void;
 };
 
 const ConversationsContext = createContext<ConversationsContextValue | null>(null);
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const focusHandlerRef = useRef<(() => void) | null>(null);
   // First-write-wins titles derived client-side, since the backend never persists a real
   // title. Kept outside React state so a slow GET /conversations can't clobber a title
   // that a page already derived from that conversation's first message.
@@ -62,8 +68,31 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     });
   }, []);
 
+  const registerFocusHandler = useCallback((handler: () => void) => {
+    focusHandlerRef.current = handler;
+    return () => {
+      if (focusHandlerRef.current === handler) focusHandlerRef.current = null;
+    };
+  }, []);
+
+  const focusChatInput = useCallback(() => {
+    focusHandlerRef.current?.();
+  }, []);
+
   return (
-    <ConversationsContext.Provider value={{ conversations, isLoading, loadError, createAndAdd, addOrRename }}>
+    <ConversationsContext.Provider
+      value={{
+        conversations,
+        activeId,
+        setActiveId,
+        isLoading,
+        loadError,
+        createAndAdd,
+        addOrRename,
+        focusChatInput,
+        registerFocusHandler,
+      }}
+    >
       {children}
     </ConversationsContext.Provider>
   );

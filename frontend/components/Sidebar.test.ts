@@ -28,9 +28,13 @@ vi.mock("./ConversationsProvider", () => ({
       { id: "conv-123", title: "Active Chat" },
       { id: "conv-456", title: "Past Chat" },
     ],
+    activeId: "conv-123",
+    setActiveId: vi.fn(),
     isLoading: mockIsLoading,
     loadError: null,
     createAndAdd: vi.fn().mockResolvedValue({ id: "conv-new", title: "New" }),
+    focusChatInput: vi.fn(),
+    registerFocusHandler: vi.fn(),
   }),
 }));
 
@@ -59,7 +63,7 @@ describe("Sidebar component", () => {
     mockIsLoading = true;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Loading chat history");
-    expect(html).toContain("animate-pulse");
+    expect(html).toContain("animate-shimmer");
     expect(html).not.toContain("Active Chat");
     mockIsLoading = false;
   });

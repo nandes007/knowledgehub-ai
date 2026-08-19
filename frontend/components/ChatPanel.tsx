@@ -21,7 +21,19 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
-  const { addOrRename } = useConversations();
+  const { addOrRename, setActiveId, registerFocusHandler } = useConversations();
+
+  // Focus textarea on initial load and when conversation changes
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [conversationId]);
+
+  // Register focus trigger (e.g. when "New chat" is clicked in sidebar)
+  useEffect(() => {
+    return registerFocusHandler?.(() => {
+      textareaRef.current?.focus();
+    });
+  }, [registerFocusHandler]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ block: "end" });
@@ -63,8 +75,9 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
       });
       setConversationId(result.conversationId);
       addOrRename(result.conversationId, question);
-      if (isNewConversation) {
-        router.replace(`/chat/${result.conversationId}`);
+      setActiveId?.(result.conversationId);
+      if (isNewConversation && typeof window !== "undefined") {
+        window.history.replaceState(null, "", `/chat/${result.conversationId}`);
       }
       setMessages((prev) =>
         prev.map((m) =>
@@ -121,6 +134,7 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isSending}
+            autoFocus
             placeholder="Ask anything about your company's knowledge base..."
             rows={1}
             className="flex-1 resize-none bg-transparent px-3 py-1.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"

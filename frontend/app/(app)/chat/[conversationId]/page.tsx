@@ -18,9 +18,10 @@ export default function ChatConversationPage({
 function ConversationLoader({ conversationId }: { conversationId: string }) {
   const [initialMessages, setInitialMessages] = useState<ChatMessage[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { addOrRename } = useConversations();
+  const { addOrRename, setActiveId } = useConversations();
 
   useEffect(() => {
+    setActiveId?.(conversationId);
     getConversationMessages(conversationId)
       .then((messages) => {
         setInitialMessages(messages.map(({ id, role, content, sources }) => ({ id, role, content, sources })));
@@ -28,14 +29,22 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
         if (firstUserMessage) addOrRename(conversationId, firstUserMessage.content);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load this conversation."));
-  }, [conversationId, addOrRename]);
+  }, [conversationId, addOrRename, setActiveId]);
 
   if (loadError) {
     return <div className="flex flex-1 items-center justify-center text-sm text-status-void">{loadError}</div>;
   }
 
   if (initialMessages === null) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-text-secondary">Loading…</div>;
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-text-tertiary">
+        <div className="flex items-center gap-1.5" aria-label="Loading conversation">
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+        </div>
+      </div>
+    );
   }
 
   return <ChatPanel conversationId={conversationId} initialMessages={initialMessages} />;

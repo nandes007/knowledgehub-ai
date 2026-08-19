@@ -68,25 +68,20 @@ function IconLogout({ size = 18 }: { size?: number }) {
 }
 
 export function Sidebar() {
-  const { conversations, isLoading, loadError, createAndAdd } = useConversations();
+  const { conversations, activeId: providerActiveId, setActiveId, isLoading, loadError, focusChatInput } = useConversations();
   const { isAdmin, logout } = useAuth();
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
   const router = useRouter();
-  const activeId = params?.conversationId;
+  const activeId = params?.conversationId ?? providerActiveId;
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
 
-  async function handleNewChat() {
-    setCreateError(null);
-    try {
-      const conversation = await createAndAdd();
-      setIsOpen(false);
-      router.push(`/chat/${conversation.id}`);
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Couldn't start a new chat.");
-    }
+  function handleNewChat() {
+    setIsOpen(false);
+    setActiveId?.(null);
+    focusChatInput?.();
+    router.push("/");
   }
 
   function handleLogout() {
@@ -153,7 +148,6 @@ export function Sidebar() {
             <IconPlus size={16} />
             {!isCollapsed && <span>New chat</span>}
           </button>
-          {createError && !isCollapsed && <p className="px-1 text-xs text-status-void">{createError}</p>}
 
           <Link
             href="/knowledge"
@@ -195,27 +189,32 @@ export function Sidebar() {
               {loadError ? (
                 <p className="px-3 py-2 text-sm text-status-void">{loadError}</p>
               ) : isLoading ? (
-                <ul className="space-y-1" aria-label="Loading chat history">
-                  {["w-3/4", "w-1/2", "w-4/5", "w-3/5"].map((width, idx) => (
+                <ul className="space-y-1 px-1 py-1" aria-label="Loading chat history">
+                  {["w-3/4", "w-1/2", "w-4/5", "w-3/5", "w-2/3"].map((width, idx) => (
                     <li
                       key={idx}
-                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 animate-pulse"
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
                     >
-                      <div className="h-3.5 w-3.5 shrink-0 rounded bg-white/10" />
-                      <div className={`h-3.5 ${width} rounded bg-white/10`} />
+                      <div className="h-3.5 w-3.5 shrink-0 rounded animate-shimmer" />
+                      <div className={`h-3.5 ${width} rounded animate-shimmer`} />
                     </li>
                   ))}
                 </ul>
               ) : conversations.length === 0 ? (
-                <p className="px-3 py-2 text-sm text-text-tertiary">No conversations yet. Start one above.</p>
+                <p className="px-3 py-2 text-sm text-text-tertiary animate-fade-in">
+                  No conversations yet. Start one above.
+                </p>
               ) : (
-                <ul className="space-y-0.5">
+                <ul className="space-y-0.5 animate-fade-in">
                   {conversations.map((conversation) => (
                     <li key={conversation.id}>
                       <Link
                         href={`/chat/${conversation.id}`}
-                        onClick={() => setIsOpen(false)}
-                        className={`group flex items-center gap-2.5 truncate rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+                        onClick={() => {
+                          setIsOpen(false);
+                          setActiveId?.(conversation.id);
+                        }}
+                        className={`group flex items-center gap-2.5 truncate rounded-lg px-3 py-2 text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
                           conversation.id === activeId
                             ? "border-l-[3px] border-l-gold bg-gold-muted/50 pl-[9px] font-medium text-text-primary"
                             : "text-text-secondary hover:bg-border hover:text-text-primary"

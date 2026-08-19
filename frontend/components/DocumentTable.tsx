@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { deleteDocument, listDocuments, type Document } from "@/lib/api";
-import { StatusPill, Card } from "@/components/ui";
+import { deleteDocument, listDocuments, type Document } from "../lib/api";
+import { StatusPill, Card, Input } from "./ui";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -18,12 +18,12 @@ const EXT_COLORS: Record<string, string> = {
   doc: "#3B82F6",
   pptx: "#F97316",
   ppt: "#F97316",
-  md: "#9A948C",
+  md: "#8B8B8E",
 };
 
-function FileIcon({ filename }: { filename: string }) {
+export function FileIcon({ filename }: { filename: string }) {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  const color = EXT_COLORS[ext] ?? "#9A948C";
+  const color = EXT_COLORS[ext] ?? "#8B8B8E";
 
   return (
     <svg width="20" height="24" viewBox="0 0 20 24" fill="none" className="shrink-0">
@@ -129,17 +129,17 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
         >
           <circle cx="7" cy="7" r="4.5" />
           <path d="m10.5 10.5 3 3" />
         </svg>
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search documents..."
-          className="w-full rounded-lg border border-border bg-surface-primary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          className="pl-9"
         />
       </div>
 
@@ -155,12 +155,12 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
               <FileIcon filename={doc.filename} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-text-primary">{doc.filename}</p>
-                <div className="mt-0.5 flex items-center gap-2">
+                <div className="mt-0.5 flex flex-wrap items-center gap-2">
                   <StatusPill status={doc.status} />
-                  <span className="text-xs text-text-tertiary">
+                  <span className="text-xs text-text-secondary">
                     {doc.visibility === "department" ? doc.department ?? "department" : "Company-wide"}
                   </span>
-                  <span className="font-mono text-xs text-text-tertiary">{formatDate(doc.createdAt)}</span>
+                  <span className="font-mono text-xs text-text-secondary">{formatDate(doc.createdAt)}</span>
                 </div>
                 {doc.status === "failed" && doc.errorMessage && (
                   <p className="mt-1 text-xs text-status-void">{doc.errorMessage}</p>
@@ -170,7 +170,7 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
                 type="button"
                 onClick={() => handleDelete(doc.id, doc.filename)}
                 disabled={deletingId === doc.id}
-                className="shrink-0 rounded-lg p-2 text-text-tertiary opacity-0 transition-all duration-120 hover:bg-status-void-bg hover:text-status-void focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100 disabled:opacity-50"
+                className="shrink-0 rounded-lg p-2 text-text-secondary opacity-0 transition-all duration-120 hover:bg-surface-overlay hover:text-status-void focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold group-hover:opacity-100 disabled:opacity-50"
                 aria-label={`Delete ${doc.filename}`}
                 title="Delete"
               >

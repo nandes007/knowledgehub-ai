@@ -1,0 +1,85 @@
+import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
+import AuthLayout from "../app/(auth)/layout";
+import LoginPage from "../app/(auth)/login/page";
+import RegisterPage from "../app/(auth)/register/page";
+import AdminPage from "../app/(app)/admin/page";
+
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+  }),
+}));
+
+// Mock AuthProvider
+vi.mock("@/components/AuthProvider", () => ({
+  useAuth: () => ({
+    token: null,
+    isReady: true,
+    isAdmin: true,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+  }),
+}));
+
+// Mock API
+vi.mock("@/lib/api", () => ({
+  ADMIN_REQUIRED: "admin_required",
+  getStats: vi.fn().mockResolvedValue({
+    documentCount: 42,
+    estimatedCostUsd: 1.2345,
+    messagesPerDay: [{ date: "2026-08-01", count: 10 }],
+    documentsPerUser: [{ email: "user@example.com", count: 5 }],
+    costPerDay: [{ date: "2026-08-01", costUsd: 0.5 }],
+  }),
+}));
+
+describe("Auth and Admin Pages", () => {
+  describe("AuthLayout", () => {
+    it("renders with dark background, radial glow, and Wordmark", () => {
+      const html = renderToString(
+        createElement(AuthLayout, {}, createElement("div", null, "Child Content")),
+      );
+      expect(html).toContain("bg-surface-primary");
+      expect(html).toContain("radial-gradient");
+      expect(html).toContain("rgba(212,167,69,0.06)");
+      expect(html).toContain("nowledgeHub");
+      expect(html).toContain("Child Content");
+    });
+  });
+
+  describe("LoginPage", () => {
+    it("renders login form with new primitives and gold register link", () => {
+      const html = renderToString(createElement(LoginPage));
+      expect(html).toContain("Log in");
+      expect(html).toContain("bg-surface-input");
+      expect(html).toContain("bg-gold");
+      expect(html).toContain("text-gold");
+      expect(html).toContain("href=\"/register\"");
+    });
+  });
+
+  describe("RegisterPage", () => {
+    it("renders register form with new primitives and gold login link", () => {
+      const html = renderToString(createElement(RegisterPage));
+      expect(html).toContain("Register");
+      expect(html).toContain("bg-surface-input");
+      expect(html).toContain("bg-gold");
+      expect(html).toContain("text-gold");
+      expect(html).toContain("href=\"/login\"");
+    });
+  });
+
+  describe("AdminPage", () => {
+    it("renders admin page heading and layout", () => {
+      const html = renderToString(createElement(AdminPage));
+      expect(html).toContain("Admin");
+      expect(html).toContain("Usage across the vault, last 30 days.");
+      expect(html).toContain("bg-surface-primary");
+    });
+  });
+});

@@ -28,7 +28,7 @@ export default function AdminPage() {
   }, [router]);
 
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6 pt-16 md:px-6 md:pt-6">
+    <div className="flex flex-1 flex-col gap-6 overflow-y-auto bg-surface-primary px-4 pb-6 pt-16 md:px-6 md:pt-6">
       <div>
         <h1 className="text-lg font-semibold text-text-primary">Admin</h1>
         <p className="mt-1 text-sm text-text-secondary">Usage across the vault, last 30 days.</p>
@@ -43,11 +43,11 @@ export default function AdminPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Card className="p-4">
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-secondary">Documents filed</p>
-              <p className="mt-1 font-mono text-2xl font-semibold text-text-primary">{stats.documentCount}</p>
+              <p className="mt-1 text-2xl font-semibold text-text-primary">{stats.documentCount}</p>
             </Card>
             <Card className="p-4">
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-secondary">Estimated cost</p>
-              <p className="mt-1 font-mono text-2xl font-semibold text-text-primary">
+              <p className="mt-1 text-2xl font-semibold text-text-primary">
                 {formatUsd(stats.estimatedCostUsd)}
               </p>
             </Card>

@@ -20,12 +20,15 @@ vi.mock("./AuthProvider", () => ({
   }),
 }));
 
+let mockIsLoading = false;
+
 vi.mock("./ConversationsProvider", () => ({
   useConversations: () => ({
     conversations: [
       { id: "conv-123", title: "Active Chat" },
       { id: "conv-456", title: "Past Chat" },
     ],
+    isLoading: mockIsLoading,
     loadError: null,
     createAndAdd: vi.fn().mockResolvedValue({ id: "conv-new", title: "New" }),
   }),
@@ -33,6 +36,7 @@ vi.mock("./ConversationsProvider", () => ({
 
 describe("Sidebar component", () => {
   it("renders with dark chrome, wordmark, nav items, and active conversation", () => {
+    mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("bg-surface-overlay");
     expect(html).toContain("New chat");
@@ -45,8 +49,18 @@ describe("Sidebar component", () => {
   });
 
   it("includes collapse toggle button and mobile hamburger button", () => {
+    mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Collapse sidebar");
     expect(html).toContain("Toggle conversation list");
+  });
+
+  it("renders skeleton placeholders when loading chat history", () => {
+    mockIsLoading = true;
+    const html = renderToString(createElement(Sidebar));
+    expect(html).toContain("Loading chat history");
+    expect(html).toContain("animate-pulse");
+    expect(html).not.toContain("Active Chat");
+    mockIsLoading = false;
   });
 });

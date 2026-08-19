@@ -68,7 +68,7 @@ function IconLogout({ size = 18 }: { size?: number }) {
 }
 
 export function Sidebar() {
-  const { conversations, loadError, createAndAdd } = useConversations();
+  const { conversations, isLoading, loadError, createAndAdd } = useConversations();
   const { isAdmin, logout } = useAuth();
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
@@ -194,6 +194,18 @@ export function Sidebar() {
             <>
               {loadError ? (
                 <p className="px-3 py-2 text-sm text-status-void">{loadError}</p>
+              ) : isLoading ? (
+                <ul className="space-y-1" aria-label="Loading chat history">
+                  {["w-3/4", "w-1/2", "w-4/5", "w-3/5"].map((width, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 animate-pulse"
+                    >
+                      <div className="h-3.5 w-3.5 shrink-0 rounded bg-white/10" />
+                      <div className={`h-3.5 ${width} rounded bg-white/10`} />
+                    </li>
+                  ))}
+                </ul>
               ) : conversations.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-text-tertiary">No conversations yet. Start one above.</p>
               ) : (

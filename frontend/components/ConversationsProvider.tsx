@@ -11,6 +11,7 @@ function deriveTitle(message: string): string {
 
 type ConversationsContextValue = {
   conversations: Conversation[];
+  isLoading: boolean;
   loadError: string | null;
   createAndAdd: () => Promise<Conversation>;
   addOrRename: (id: string, firstMessage: string) => void;
@@ -20,6 +21,7 @@ const ConversationsContext = createContext<ConversationsContextValue | null>(nul
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // First-write-wins titles derived client-side, since the backend never persists a real
   // title. Kept outside React state so a slow GET /conversations can't clobber a title
@@ -32,9 +34,14 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   useEffect(() => {
+    setIsLoading(true);
     listConversations()
-      .then((list) => setConversations(applyOverrides(list)))
-      .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load conversations."));
+      .then((list) => {
+        setConversations(applyOverrides(list));
+        setLoadError(null);
+      })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load conversations."))
+      .finally(() => setIsLoading(false));
   }, [applyOverrides]);
 
   const createAndAdd = useCallback(async () => {
@@ -56,7 +63,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   return (
-    <ConversationsContext.Provider value={{ conversations, loadError, createAndAdd, addOrRename }}>
+    <ConversationsContext.Provider value={{ conversations, isLoading, loadError, createAndAdd, addOrRename }}>
       {children}
     </ConversationsContext.Provider>
   );

@@ -7,6 +7,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
+from datetime import datetime, timezone
+
 from app.db import get_engine
 from app.deps import CurrentUserDep
 from app.models.conversation import Conversation
@@ -20,6 +22,12 @@ from ingestion.index import VectorStore, get_vector_store
 router = APIRouter()
 
 _HISTORY_LIMIT = 10  # last N messages included as context for follow-ups
+_TITLE_MAX_LENGTH = 48
+
+
+def _derive_title(message: str) -> str:
+    cleaned = message.strip()
+    return f"{cleaned[:_TITLE_MAX_LENGTH]}…" if len(cleaned) > _TITLE_MAX_LENGTH else cleaned
 
 
 def _sse(event: str, data: dict) -> str:
@@ -88,6 +96,10 @@ def _event_stream(
             token_count=token_count,
         )
         session.add(message)
+        conversation = session.get(Conversation, conversation_id)
+        if conversation:
+            conversation.updated_at = datetime.now(timezone.utc)
+            session.add(conversation)
         session.commit()
         session.refresh(message)
         message_id = message.id
@@ -111,6 +123,10 @@ def chat(
     with Session(engine) as session:
         conversation = _get_or_create_conversation(session, payload.conversation_id, current_user.id)
         history = _recent_history(session, conversation.id, _HISTORY_LIMIT)
+        if conversation.title == "New chat":
+            conversation.title = _derive_title(payload.message)
+        conversation.updated_at = datetime.now(timezone.utc)
+        session.add(conversation)
         session.add(Message(conversation_id=conversation.id, role="user", content=payload.message))
         session.commit()
         conversation_id = conversation.id

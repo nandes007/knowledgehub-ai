@@ -20,6 +20,14 @@ def create_conversation(session: SessionDep, current_user: CurrentUserDep) -> Co
     return conversation
 
 
+_TITLE_MAX_LENGTH = 48
+
+
+def _derive_title(message: str) -> str:
+    cleaned = message.strip()
+    return f"{cleaned[:_TITLE_MAX_LENGTH]}…" if len(cleaned) > _TITLE_MAX_LENGTH else cleaned
+
+
 @router.get("/conversations", response_model=list[ConversationRead])
 def list_conversations(session: SessionDep, current_user: CurrentUserDep) -> list[Conversation]:
     statement = (
@@ -27,7 +35,23 @@ def list_conversations(session: SessionDep, current_user: CurrentUserDep) -> lis
         .where(Conversation.user_id == current_user.id)
         .order_by(Conversation.updated_at.desc())
     )
-    return list(session.exec(statement))
+    conversations = list(session.exec(statement))
+    updated = False
+    for conv in conversations:
+        if conv.title == "New chat":
+            first_msg = session.exec(
+                select(Message)
+                .where(Message.conversation_id == conv.id, Message.role == "user")
+                .order_by(Message.created_at.asc())
+                .limit(1)
+            ).first()
+            if first_msg:
+                conv.title = _derive_title(first_msg.content)
+                session.add(conv)
+                updated = True
+    if updated:
+        session.commit()
+    return conversations
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])

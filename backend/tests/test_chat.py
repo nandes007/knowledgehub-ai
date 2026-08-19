@@ -208,3 +208,23 @@ def test_chat_rejects_a_message_over_the_length_limit(client, tmp_path, test_use
         _clear_overrides()
 
     assert response.status_code == 422
+
+
+def test_chat_sets_conversation_title_from_first_message(client, tmp_path, test_user_id):
+    _override(_FakeLLM())
+    _override_store(_seeded_store(tmp_path, test_user_id))
+    try:
+        response = client.post("/chat", json={"message": "What is our travel policy?"})
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    done = next(data for event, data in events if event == "done")
+    conversation_id = done["conversation_id"]
+
+    conv_response = client.get("/conversations")
+    assert conv_response.status_code == 200
+    conv = next(c for c in conv_response.json() if c["id"] == conversation_id)
+    assert conv["title"] == "What is our travel policy?"
+

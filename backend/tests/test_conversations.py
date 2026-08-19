@@ -61,3 +61,37 @@ def test_list_messages_returns_chronological_order_with_sources(client, db_engin
     messages = response.json()
     assert [m["role"] for m in messages] == ["user", "assistant"]
     assert messages[1]["sources"][0]["filename"] == "a.md"
+
+
+def test_list_conversations_derives_title_from_first_user_message_if_default(client, db_engine):
+    conversation = client.post("/conversations").json()
+    conversation_id = uuid.UUID(conversation["id"])
+
+    with Session(db_engine) as session:
+        session.add(
+            Message(conversation_id=conversation_id, role="user", content="What are company holidays?")
+        )
+        session.commit()
+
+    response = client.get("/conversations")
+    assert response.status_code == 200
+    convs = response.json()
+    matched = next(c for c in convs if c["id"] == conversation["id"])
+    assert matched["title"] == "What are company holidays?"
+
+
+def test_list_conversations_truncates_long_titles_with_ellipsis(client, db_engine):
+    conversation = client.post("/conversations").json()
+    conversation_id = uuid.UUID(conversation["id"])
+    long_msg = "This is a very long user question that exceeds forty-eight characters easily"
+
+    with Session(db_engine) as session:
+        session.add(Message(conversation_id=conversation_id, role="user", content=long_msg))
+        session.commit()
+
+    response = client.get("/conversations")
+    assert response.status_code == 200
+    convs = response.json()
+    matched = next(c for c in convs if c["id"] == conversation["id"])
+    assert matched["title"] == f"{long_msg[:48]}…"
+

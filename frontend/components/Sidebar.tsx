@@ -139,7 +139,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={handleNewChat}
-            className={`flex w-full items-center gap-2.5 rounded-lg bg-gold px-3 py-2 text-sm font-medium text-surface-primary transition-colors duration-120 hover:bg-gold-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+            className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay text-text-secondary hover:bg-border hover:text-text-primary ${
               isCollapsed ? "justify-center px-0" : ""
             }`}
             title="New chat"
@@ -186,6 +186,9 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto px-2 pb-2">
           {!isCollapsed && (
             <>
+              <div className="mb-1 mt-4 px-3 text-xs font-semibold text-text-tertiary">
+                Recent
+              </div>
               {loadError ? (
                 <p className="px-3 py-2 text-sm text-status-void">{loadError}</p>
               ) : isLoading ? (
@@ -216,7 +219,7 @@ export function Sidebar() {
                         }}
                         className={`group flex items-center gap-2.5 truncate rounded-lg px-3 py-2 text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
                           conversation.id === activeId
-                            ? "border-l-[3px] border-l-gold bg-gold-muted/50 pl-[9px] font-medium text-text-primary"
+                            ? "bg-surface-raised font-medium text-text-primary"
                             : "text-text-secondary hover:bg-border hover:text-text-primary"
                         }`}
                       >

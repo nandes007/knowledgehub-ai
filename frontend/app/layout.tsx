@@ -33,7 +33,7 @@ export default function RootLayout({
       // ponytail: browser extensions (Dark Reader) inject attrs on <html> before hydration
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans">
+      <body className="h-full flex flex-col font-sans">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

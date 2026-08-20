@@ -3,10 +3,12 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { Sidebar } from "./Sidebar";
 
+let mockPathname = "/chat/conv-123";
+
 // Mock hooks used in Sidebar
 vi.mock("next/navigation", () => ({
   useParams: () => ({ conversationId: "conv-123" }),
-  usePathname: () => "/knowledge",
+  usePathname: () => mockPathname,
   useRouter: () => ({
     push: vi.fn(),
     replace: vi.fn(),
@@ -41,7 +43,8 @@ vi.mock("./ConversationsProvider", () => ({
 }));
 
 describe("Sidebar component", () => {
-  it("renders with dark chrome, wordmark, nav items, and active conversation", () => {
+  it("renders with dark chrome, wordmark, nav items, and active conversation on chat route", () => {
+    mockPathname = "/chat/conv-123";
     mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("bg-surface-overlay");
@@ -55,7 +58,19 @@ describe("Sidebar component", () => {
     expect(html).toContain("Conversation options");
   });
 
+  it("does not highlight conversations when on non-chat route like /knowledge", () => {
+    mockPathname = "/knowledge";
+    mockIsLoading = false;
+    const html = renderToString(createElement(Sidebar));
+    expect(html).toContain("Knowledge base");
+    expect(html).toContain("bg-gold-muted text-gold");
+    expect(html).toContain("Active Chat");
+    // Ensure Active Chat does not have the active background class
+    expect(html).not.toContain("bg-surface-raised font-medium text-text-primary");
+  });
+
   it("includes collapse toggle button and mobile hamburger button", () => {
+    mockPathname = "/chat/conv-123";
     mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Collapse sidebar");
@@ -63,6 +78,7 @@ describe("Sidebar component", () => {
   });
 
   it("renders skeleton placeholders when loading chat history", () => {
+    mockPathname = "/chat/conv-123";
     mockIsLoading = true;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Loading chat history");

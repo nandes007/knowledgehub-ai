@@ -108,7 +108,8 @@ export function Sidebar() {
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
   const router = useRouter();
-  const activeId = params?.conversationId ?? providerActiveId;
+  const isChatRoute = pathname === "/" || pathname === "/chat" || (pathname?.startsWith("/chat/") ?? false);
+  const activeId = isChatRoute ? (params?.conversationId ?? providerActiveId) : null;
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -247,7 +248,10 @@ export function Sidebar() {
 
           <Link
             href="/knowledge"
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              setActiveId?.(null);
+            }}
             className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
               pathname === "/knowledge"
                 ? "bg-gold-muted text-gold"
@@ -263,7 +267,10 @@ export function Sidebar() {
           {isAdmin && (
             <Link
               href="/admin"
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setIsOpen(false);
+                setActiveId?.(null);
+              }}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
                 pathname === "/admin"
                   ? "bg-gold-muted text-gold"
@@ -331,7 +338,7 @@ export function Sidebar() {
                         </div>
                       ) : (
                         <div
-                          className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-all duration-150 ${
+                          className={`group relative flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-all duration-150 cursor-pointer ${
                             conversation.id === activeId
                               ? "bg-surface-raised font-medium text-text-primary"
                               : "text-text-secondary hover:bg-border hover:text-text-primary"
@@ -343,15 +350,18 @@ export function Sidebar() {
                               setIsOpen(false);
                               setActiveId?.(conversation.id);
                             }}
-                            className="flex min-w-0 flex-1 items-center gap-2.5 truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded"
-                          >
+                            className="absolute inset-0 z-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                            aria-label={conversation.title}
+                          />
+
+                          <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-2.5 truncate">
                             <span className="shrink-0">
                               <IconChat size={14} />
                             </span>
                             <span className="truncate">{conversation.title}</span>
-                          </Link>
+                          </div>
 
-                          <div className="relative shrink-0 ml-1">
+                          <div className="relative z-20 shrink-0 ml-1">
                             <button
                               type="button"
                               onClick={(e) => {

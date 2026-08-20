@@ -99,7 +99,7 @@ export function Sidebar() {
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-label="Toggle conversation list"
-        className="fixed left-3 top-3 z-50 rounded-lg border border-border bg-surface-raised p-2 text-text-primary md:hidden"
+        className="fixed left-3 top-3 z-50 cursor-pointer rounded-lg border border-border bg-surface-raised p-2 text-text-primary md:hidden"
       >
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
@@ -126,7 +126,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => setIsCollapsed((c) => !c)}
-            className="hidden rounded-md p-1 text-text-secondary hover:bg-border hover:text-text-primary md:block"
+            className="hidden cursor-pointer rounded-md p-1 text-text-secondary hover:bg-border hover:text-text-primary md:block"
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -139,7 +139,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={handleNewChat}
-            className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay text-text-secondary hover:bg-border hover:text-text-primary ${
+            className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay text-text-secondary hover:bg-border hover:text-text-primary ${
               isCollapsed ? "justify-center px-0" : ""
             }`}
             title="New chat"
@@ -239,7 +239,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={handleLogout}
-            className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors duration-120 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
+            className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors duration-120 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
               isCollapsed ? "justify-center px-0" : ""
             }`}
             title="Log out"

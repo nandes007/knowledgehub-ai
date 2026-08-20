@@ -48,7 +48,7 @@ describe("Sidebar component", () => {
     expect(html).toContain("Admin");
     expect(html).toContain("Active Chat");
     expect(html).toContain("Past Chat");
-    expect(html).toContain("border-l-gold");
+    expect(html).toContain("bg-surface-raised");
     expect(html).toContain("Log out");
   });
 

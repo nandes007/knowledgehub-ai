@@ -14,6 +14,10 @@ class ConversationRead(BaseModel):
     updated_at: datetime
 
 
+class ConversationUpdate(BaseModel):
+    title: str
+
+
 class MessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

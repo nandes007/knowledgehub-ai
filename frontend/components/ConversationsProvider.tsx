@@ -1,7 +1,13 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { createConversation, listConversations, type Conversation } from "@/lib/api";
+import {
+  createConversation,
+  deleteConversation as apiDeleteConversation,
+  listConversations,
+  renameConversation as apiRenameConversation,
+  type Conversation,
+} from "@/lib/api";
 
 const TITLE_MAX_LENGTH = 48;
 
@@ -17,6 +23,8 @@ type ConversationsContextValue = {
   loadError: string | null;
   createAndAdd: () => Promise<Conversation>;
   addOrRename: (id: string, firstMessage: string) => void;
+  renameConversation: (id: string, newTitle: string) => Promise<void>;
+  deleteConversation: (id: string) => Promise<void>;
   focusChatInput: () => void;
   registerFocusHandler: (handler: () => void) => () => void;
 };
@@ -68,6 +76,23 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     });
   }, []);
 
+  const rename = useCallback(async (id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    titleOverridesRef.current.set(id, trimmed);
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)));
+    await apiRenameConversation(id, trimmed);
+  }, []);
+
+  const remove = useCallback(async (id: string) => {
+    titleOverridesRef.current.delete(id);
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (activeId === id) {
+      setActiveId(null);
+    }
+    await apiDeleteConversation(id);
+  }, [activeId]);
+
   const registerFocusHandler = useCallback((handler: () => void) => {
     focusHandlerRef.current = handler;
     return () => {
@@ -89,6 +114,8 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
         loadError,
         createAndAdd,
         addOrRename,
+        renameConversation: rename,
+        deleteConversation: remove,
         focusChatInput,
         registerFocusHandler,
       }}

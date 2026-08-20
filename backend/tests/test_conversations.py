@@ -95,3 +95,52 @@ def test_list_conversations_truncates_long_titles_with_ellipsis(client, db_engin
     matched = next(c for c in convs if c["id"] == conversation["id"])
     assert matched["title"] == f"{long_msg[:48]}…"
 
+
+def test_update_conversation_renames_title(client):
+    conversation = client.post("/conversations").json()
+    conversation_id = conversation["id"]
+
+    response = client.patch(f"/conversations/{conversation_id}", json={"title": "Updated Title"})
+    assert response.status_code == 200
+    assert response.json()["title"] == "Updated Title"
+
+    # Verify persisted in list
+    list_res = client.get("/conversations")
+    matched = next(c for c in list_res.json() if c["id"] == conversation_id)
+    assert matched["title"] == "Updated Title"
+
+
+def test_update_conversation_rejects_empty_title(client):
+    conversation = client.post("/conversations").json()
+    conversation_id = conversation["id"]
+
+    response = client.patch(f"/conversations/{conversation_id}", json={"title": "   "})
+    assert response.status_code == 422
+
+
+def test_update_conversation_404_for_unknown_or_other_user(client):
+    response = client.patch(f"/conversations/{uuid.uuid4()}", json={"title": "New Title"})
+    assert response.status_code == 404
+
+
+def test_delete_conversation_removes_it(client):
+    conversation = client.post("/conversations").json()
+    conversation_id = conversation["id"]
+
+    response = client.delete(f"/conversations/{conversation_id}")
+    assert response.status_code == 204
+
+    # Verify no longer in list
+    list_res = client.get("/conversations")
+    assert not any(c["id"] == conversation_id for c in list_res.json())
+
+    # Verify 404 on messages
+    msg_res = client.get(f"/conversations/{conversation_id}/messages")
+    assert msg_res.status_code == 404
+
+
+def test_delete_conversation_404_for_unknown(client):
+    response = client.delete(f"/conversations/{uuid.uuid4()}")
+    assert response.status_code == 404
+
+

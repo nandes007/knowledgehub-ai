@@ -33,6 +33,8 @@ vi.mock("./ConversationsProvider", () => ({
     isLoading: mockIsLoading,
     loadError: null,
     createAndAdd: vi.fn().mockResolvedValue({ id: "conv-new", title: "New" }),
+    renameConversation: vi.fn().mockResolvedValue(undefined),
+    deleteConversation: vi.fn().mockResolvedValue(undefined),
     focusChatInput: vi.fn(),
     registerFocusHandler: vi.fn(),
   }),
@@ -50,6 +52,7 @@ describe("Sidebar component", () => {
     expect(html).toContain("Past Chat");
     expect(html).toContain("bg-surface-raised");
     expect(html).toContain("Log out");
+    expect(html).toContain("Conversation options");
   });
 
   it("includes collapse toggle button and mobile hamburger button", () => {

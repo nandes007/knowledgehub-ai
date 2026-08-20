@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
@@ -67,8 +67,43 @@ function IconLogout({ size = 18 }: { size?: number }) {
   );
 }
 
+function IconDots({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+      <circle cx="8" cy="3" r="1.5" />
+      <circle cx="8" cy="8" r="1.5" />
+      <circle cx="8" cy="13" r="1.5" />
+    </svg>
+  );
+}
+
+function IconPencil({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H2.5v-2.5l8.5-8.5Z" />
+    </svg>
+  );
+}
+
+function IconTrash({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 4.5h11M5.5 4.5V3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.5M6 7.5v4.5M10 7.5v4.5M3.5 4.5l.8 9.2A1.5 1.5 0 0 0 5.8 15h4.4a1.5 1.5 0 0 0 1.5-1.3l.8-9.2" />
+    </svg>
+  );
+}
+
 export function Sidebar() {
-  const { conversations, activeId: providerActiveId, setActiveId, isLoading, loadError, focusChatInput } = useConversations();
+  const {
+    conversations,
+    activeId: providerActiveId,
+    setActiveId,
+    isLoading,
+    loadError,
+    focusChatInput,
+    renameConversation,
+    deleteConversation,
+  } = useConversations();
   const { isAdmin, logout } = useAuth();
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
@@ -76,6 +111,33 @@ export function Sidebar() {
   const activeId = params?.conversationId ?? providerActiveId;
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Rename and Delete state
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [deletingConversation, setDeletingConversation] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close menu on click outside or Escape
+  useEffect(() => {
+    if (!menuOpenId) return;
+    function handleDown(e: MouseEvent | TouchEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpenId(null);
+    }
+    document.addEventListener("mousedown", handleDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpenId]);
 
   function handleNewChat() {
     setIsOpen(false);
@@ -88,6 +150,40 @@ export function Sidebar() {
     logout();
     setIsOpen(false);
     router.replace("/login");
+  }
+
+  function startEditing(id: string, currentTitle: string) {
+    setMenuOpenId(null);
+    setEditingId(id);
+    setEditTitle(currentTitle);
+  }
+
+  async function submitRename(id: string) {
+    const trimmed = editTitle.trim();
+    setEditingId(null);
+    if (trimmed && trimmed !== conversations.find((c) => c.id === id)?.title) {
+      await renameConversation(id, trimmed);
+    }
+  }
+
+  function confirmDelete(id: string, title: string) {
+    setMenuOpenId(null);
+    setDeletingConversation({ id, title });
+  }
+
+  async function handleDelete() {
+    if (!deletingConversation) return;
+    setIsDeleting(true);
+    try {
+      await deleteConversation(deletingConversation.id);
+      if (activeId === deletingConversation.id) {
+        setActiveId?.(null);
+        router.push("/");
+      }
+      setDeletingConversation(null);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   const sidebarWidth = isCollapsed ? "w-14" : "w-[260px]";
@@ -210,22 +306,97 @@ export function Sidebar() {
               ) : (
                 <ul className="space-y-0.5 animate-fade-in">
                   {conversations.map((conversation) => (
-                    <li key={conversation.id}>
-                      <Link
-                        href={`/chat/${conversation.id}`}
-                        onClick={() => {
-                          setIsOpen(false);
-                          setActiveId?.(conversation.id);
-                        }}
-                        className={`group flex items-center gap-2.5 truncate rounded-lg px-3 py-2 text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
-                          conversation.id === activeId
-                            ? "bg-surface-raised font-medium text-text-primary"
-                            : "text-text-secondary hover:bg-border hover:text-text-primary"
-                        }`}
-                      >
-                        <IconChat size={14} />
-                        <span className="truncate">{conversation.title}</span>
-                      </Link>
+                    <li key={conversation.id} className="relative group">
+                      {editingId === conversation.id ? (
+                        <div className="flex items-center gap-2 rounded-lg bg-surface-raised px-2.5 py-1.5 ring-1 ring-gold">
+                          <IconChat size={14} />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                submitRename(conversation.id);
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setEditingId(null);
+                              }
+                            }}
+                            onBlur={() => submitRename(conversation.id)}
+                            className="w-full bg-transparent text-sm text-text-primary outline-none focus:outline-none"
+                            aria-label="Rename conversation"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-all duration-150 ${
+                            conversation.id === activeId
+                              ? "bg-surface-raised font-medium text-text-primary"
+                              : "text-text-secondary hover:bg-border hover:text-text-primary"
+                          }`}
+                        >
+                          <Link
+                            href={`/chat/${conversation.id}`}
+                            onClick={() => {
+                              setIsOpen(false);
+                              setActiveId?.(conversation.id);
+                            }}
+                            className="flex min-w-0 flex-1 items-center gap-2.5 truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded"
+                          >
+                            <span className="shrink-0">
+                              <IconChat size={14} />
+                            </span>
+                            <span className="truncate">{conversation.title}</span>
+                          </Link>
+
+                          <div className="relative shrink-0 ml-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setMenuOpenId((curr) => (curr === conversation.id ? null : conversation.id));
+                              }}
+                              aria-label="Conversation options"
+                              title="Options"
+                              className={`cursor-pointer rounded p-1 transition-all text-text-secondary hover:bg-surface-overlay hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+                                menuOpenId === conversation.id
+                                  ? "opacity-100 bg-surface-overlay text-text-primary"
+                                  : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                              }`}
+                            >
+                              <IconDots size={14} />
+                            </button>
+
+                            {menuOpenId === conversation.id && (
+                              <div
+                                ref={menuRef}
+                                className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-border bg-surface-overlay p-1 shadow-lg animate-fade-in"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => startEditing(conversation.id, conversation.title)}
+                                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-border hover:text-text-primary"
+                                >
+                                  <IconPencil size={13} />
+                                  <span>Rename</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => confirmDelete(conversation.id, conversation.title)}
+                                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-status-void transition-colors hover:bg-status-void/15"
+                                >
+                                  <IconTrash size={13} />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -250,6 +421,47 @@ export function Sidebar() {
           </button>
         </div>
       </aside>
+
+      {/* Delete Confirmation Modal */}
+      {deletingConversation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-xs animate-fade-in"
+            onClick={() => !isDeleting && setDeletingConversation(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-surface-overlay p-5 shadow-2xl animate-scale-in"
+          >
+            <h3 id="delete-dialog-title" className="text-base font-semibold text-text-primary">
+              Delete conversation?
+            </h3>
+            <p className="mt-2 text-sm text-text-secondary">
+              This will delete <strong className="text-text-primary">&ldquo;{deletingConversation.title}&rdquo;</strong>. This action cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingConversation(null)}
+                className="cursor-pointer rounded-lg border border-border px-3.5 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDelete}
+                className="cursor-pointer rounded-lg bg-status-void px-3.5 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-void disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

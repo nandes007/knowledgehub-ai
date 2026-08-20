@@ -116,6 +116,28 @@ export async function createConversation(): Promise<Conversation> {
   return { id, title };
 }
 
+export async function renameConversation(conversationId: string, title: string): Promise<Conversation> {
+  const response = await apiFetch(`${API_URL}/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to rename conversation: ${response.status}`);
+  }
+  const { id, title: updatedTitle } = (await response.json()) as { id: string; title: string };
+  return { id, title: updatedTitle };
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const response = await apiFetch(`${API_URL}/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete conversation: ${response.status}`);
+  }
+}
+
 export type ConversationMessage = {
   id: string;
   role: "user" | "assistant";

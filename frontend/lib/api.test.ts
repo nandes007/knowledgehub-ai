@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createConversation,
+  deleteConversation,
   deleteDocument,
   getConversationMessages,
   getMe,
@@ -9,6 +10,7 @@ import {
   listDocuments,
   loginAccount,
   registerAccount,
+  renameConversation,
   sendChatMessage,
   uploadDocument,
 } from "./api";
@@ -167,6 +169,49 @@ describe("createConversation", () => {
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toContain("/conversations");
     expect(options.method).toBe("POST");
+  });
+});
+
+describe("renameConversation", () => {
+  it("PATCHes /conversations/{id} with new title and returns updated conversation", async () => {
+    const body = { id: "c1", title: "New Title" };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await renameConversation("c1", "New Title");
+
+    expect(result).toEqual({ id: "c1", title: "New Title" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/conversations/c1");
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body)).toEqual({ title: "New Title" });
+  });
+
+  it("throws when rename fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("error", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(renameConversation("c-missing", "Title")).rejects.toThrow("404");
+  });
+});
+
+describe("deleteConversation", () => {
+  it("DELETEs /conversations/{id}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteConversation("c1");
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/conversations/c1");
+    expect(options.method).toBe("DELETE");
+  });
+
+  it("throws when delete fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("error", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteConversation("c-missing")).rejects.toThrow("404");
   });
 });
 

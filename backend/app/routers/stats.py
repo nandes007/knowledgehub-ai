@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from app.deps import CurrentUserDep, SessionDep
+from app.models.conversation import Conversation
 from app.models.document import Document
 from app.models.message import Message
 from app.models.user import User
@@ -21,36 +22,77 @@ _PRICE_PER_1K_TOKENS_USD = 0.0003
 
 @router.get("/stats")
 def get_stats(session: SessionDep, current_user: CurrentUserDep) -> dict:
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Admin access required")
 
     since = datetime.now(timezone.utc) - timedelta(days=_STATS_WINDOW_DAYS)
     day_column = func.date(Message.created_at)
-    rows = session.exec(
-        select(day_column, func.count())
-        .where(Message.created_at >= since)
-        .group_by(day_column)
-        .order_by(day_column)
-    ).all()
 
-    document_count = session.exec(select(func.count()).select_from(Document)).one()
-    total_tokens = session.exec(
-        select(func.coalesce(func.sum(Message.token_count), 0)).where(Message.role == "assistant")
-    ).one()
+    if current_user.role == "superadmin":
+        rows = session.exec(
+            select(day_column, func.count())
+            .where(Message.created_at >= since)
+            .group_by(day_column)
+            .order_by(day_column)
+        ).all()
 
-    documents_per_user = session.exec(
-        select(User.email, func.count(Document.id))
-        .join(Document, Document.uploaded_by == User.id)
-        .group_by(User.email)
-        .order_by(func.count(Document.id).desc(), User.email)
-    ).all()
+        document_count = session.exec(select(func.count()).select_from(Document)).one()
+        total_tokens = session.exec(
+            select(func.coalesce(func.sum(Message.token_count), 0)).where(Message.role == "assistant")
+        ).one()
 
-    tokens_per_day = session.exec(
-        select(day_column, func.coalesce(func.sum(Message.token_count), 0))
-        .where(Message.created_at >= since, Message.role == "assistant")
-        .group_by(day_column)
-        .order_by(day_column)
-    ).all()
+        documents_per_user = session.exec(
+            select(User.email, func.count(Document.id))
+            .join(Document, Document.uploaded_by == User.id)
+            .group_by(User.email)
+            .order_by(func.count(Document.id).desc(), User.email)
+        ).all()
+
+        tokens_per_day = session.exec(
+            select(day_column, func.coalesce(func.sum(Message.token_count), 0))
+            .where(Message.created_at >= since, Message.role == "assistant")
+            .group_by(day_column)
+            .order_by(day_column)
+        ).all()
+    else:
+        company_id = current_user.company_id
+        rows = session.exec(
+            select(day_column, func.count())
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(Conversation.company_id == company_id, Message.created_at >= since)
+            .group_by(day_column)
+            .order_by(day_column)
+        ).all()
+
+        document_count = session.exec(
+            select(func.count()).select_from(Document).where(Document.company_id == company_id)
+        ).one()
+
+        total_tokens = session.exec(
+            select(func.coalesce(func.sum(Message.token_count), 0))
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(Conversation.company_id == company_id, Message.role == "assistant")
+        ).one()
+
+        documents_per_user = session.exec(
+            select(User.email, func.count(Document.id))
+            .join(Document, Document.uploaded_by == User.id)
+            .where(Document.company_id == company_id)
+            .group_by(User.email)
+            .order_by(func.count(Document.id).desc(), User.email)
+        ).all()
+
+        tokens_per_day = session.exec(
+            select(day_column, func.coalesce(func.sum(Message.token_count), 0))
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(
+                Conversation.company_id == company_id,
+                Message.created_at >= since,
+                Message.role == "assistant",
+            )
+            .group_by(day_column)
+            .order_by(day_column)
+        ).all()
 
     return {
         "messages_per_day": [{"date": str(day), "count": count} for day, count in rows],

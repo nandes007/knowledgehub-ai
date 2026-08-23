@@ -91,6 +91,11 @@ def client(db_engine):
 
 
 @pytest.fixture
+def member_client(client):
+    return client
+
+
+@pytest.fixture
 def admin_client(db_engine):
     test_client = _registered_client(db_engine, "admin-user@example.com", role="admin")
     try:
@@ -101,8 +106,47 @@ def admin_client(db_engine):
 
 
 @pytest.fixture
+def superadmin_client(db_engine):
+    _override_db(db_engine)
+    with Session(db_engine) as session:
+        user = session.exec(select(User).where(User.email == "superadmin@example.com")).first()
+        if not user:
+            user = User(
+                email="superadmin@example.com",
+                password_hash=hash_password("password123"),
+                company_id=None,
+                role="superadmin",
+                approval_status="approved",
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+        user_id = user.id
+
+    test_client = TestClient(app)
+    test_client.headers["Authorization"] = f"Bearer {create_access_token(user_id)}"
+    try:
+        yield test_client
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_engine, None)
+
+
+@pytest.fixture
 def other_client(client, db_engine) -> TestClient:
     return _registered_client(db_engine, "other-user@example.com")
+
+
+@pytest.fixture
+def other_company_client(db_engine) -> TestClient:
+    test_client = _registered_client(
+        db_engine, "other-company-user@example.com", company_name="Other Company"
+    )
+    try:
+        yield test_client
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_engine, None)
 
 
 def _user_id_from(test_client: TestClient) -> uuid.UUID:

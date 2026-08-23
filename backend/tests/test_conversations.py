@@ -144,3 +144,24 @@ def test_delete_conversation_404_for_unknown(client):
     assert response.status_code == 404
 
 
+def test_cross_company_conversation_access_returns_404(client, other_company_client):
+    conversation = client.post("/conversations").json()
+    conversation_id = conversation["id"]
+
+    # Other company user cannot read messages
+    res_msg = other_company_client.get(f"/conversations/{conversation_id}/messages")
+    assert res_msg.status_code == 404
+
+    # Other company user cannot patch title
+    res_patch = other_company_client.patch(
+        f"/conversations/{conversation_id}", json={"title": "Hijacked Title"}
+    )
+    assert res_patch.status_code == 404
+
+    # Other company user cannot delete
+    res_del = other_company_client.delete(f"/conversations/{conversation_id}")
+    assert res_del.status_code == 404
+
+    # Other company user does not see it in their conversation list
+    list_res = other_company_client.get("/conversations")
+    assert not any(c["id"] == conversation_id for c in list_res.json())

@@ -410,30 +410,44 @@ describe("authenticated requests", () => {
 });
 
 describe("registerAccount", () => {
-  it("POSTs to /auth/register and returns the access token", async () => {
+  it("POSTs to /auth/register and returns the success message", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ access_token: "new-token", token_type: "bearer" }), { status: 201 }));
+      .mockResolvedValue(new Response(JSON.stringify({ message: "Registration pending approval" }), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await registerAccount("new@example.com", "password123");
+    const result = await registerAccount("Acme Corp", "new@example.com", "password123", "Jane Doe");
 
-    expect(result).toEqual({ accessToken: "new-token" });
+    expect(result).toEqual({ message: "Registration pending approval" });
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toContain("/auth/register");
     expect(JSON.parse(options.body)).toEqual({
+      company_name: "Acme Corp",
       email: "new@example.com",
       password: "password123",
-      display_name: undefined,
+      display_name: "Jane Doe",
     });
   });
 
   it("throws a friendly message when the email is already registered", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("conflict", { status: 409 }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Email already registered" }), { status: 409 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(registerAccount("dup@example.com", "password123")).rejects.toThrow(
-      "An account with that email already exists.",
+    await expect(registerAccount("Acme Corp", "dup@example.com", "password123", "Jane")).rejects.toThrow(
+      "Email already registered",
+    );
+  });
+
+  it("throws a friendly message when the company name is already taken", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Company name already taken" }), { status: 409 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registerAccount("Existing Corp", "new@example.com", "password123", "Jane")).rejects.toThrow(
+      "Company name already taken",
     );
   });
 });
@@ -454,23 +468,68 @@ describe("loginAccount", () => {
   });
 
   it("throws a friendly message on invalid credentials", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Invalid email or password" }), { status: 401 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(loginAccount("user@example.com", "wrong")).rejects.toThrow("Invalid email or password.");
+    await expect(loginAccount("user@example.com", "wrong")).rejects.toThrow("Invalid email or password");
+  });
+
+  it("throws specific backend error detail on 403 pending approval", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Your account is pending approval" }), { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(loginAccount("user@example.com", "password123")).rejects.toThrow(
+      "Your account is pending approval",
+    );
+  });
+
+  it("throws specific backend error detail on 403 company suspended", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Your company has been suspended" }), { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(loginAccount("user@example.com", "password123")).rejects.toThrow(
+      "Your company has been suspended",
+    );
   });
 });
 
 describe("getMe", () => {
   it("GETs /auth/me and camelCases the profile", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ email: "a@b.com", display_name: "Ada", role: "admin" }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          email: "a@b.com",
+          display_name: "Ada",
+          role: "admin",
+          approval_status: "approved",
+          company_id: "c1",
+          company_name: "Acme",
+          department_id: "d1",
+          department_name: "Engineering",
+        }),
+        { status: 200 },
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     const me = await getMe();
 
-    expect(me).toEqual({ email: "a@b.com", displayName: "Ada", role: "admin" });
+    expect(me).toEqual({
+      email: "a@b.com",
+      displayName: "Ada",
+      role: "admin",
+      approvalStatus: "approved",
+      companyId: "c1",
+      companyName: "Acme",
+      departmentId: "d1",
+      departmentName: "Engineering",
+    });
     expect(fetchMock.mock.calls[0][0]).toContain("/auth/me");
   });
 

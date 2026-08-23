@@ -67,6 +67,10 @@ describe("Auth and Admin Pages", () => {
     it("renders register form with new primitives and gold login link", () => {
       const html = renderToString(createElement(RegisterPage));
       expect(html).toContain("Register");
+      expect(html).toContain("Company Name");
+      expect(html).toContain("Name");
+      expect(html).toContain("Email");
+      expect(html).toContain("Password");
       expect(html).toContain("bg-surface-input");
       expect(html).toContain("bg-gold");
       expect(html).toContain("text-gold");

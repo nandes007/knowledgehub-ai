@@ -1,20 +1,22 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
-import { getMe, loginAccount, registerAccount } from "@/lib/api";
+import { getMe, loginAccount, registerAccount, type Me, type RegisterResult } from "@/lib/api";
 import { clearToken, getToken, setToken, subscribeToken } from "@/lib/auth";
 
 type AuthContextValue = {
   token: string | null;
-  // Only used to decide whether to *offer* the admin page. The API's 403 is
-  // the actual gate, so a failed/slow profile fetch just hides the link.
+  user: Me | null;
+  // True if superadmin or company admin
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isMember: boolean;
   // False on the server and on the very first client render, so the route
   // guard doesn't redirect to /login before it's had a chance to read
   // localStorage (which only exists client-side).
   isReady: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName?: string, department?: string) => Promise<void>;
+  register: (companyName: string, email: string, password: string, displayName: string) => Promise<RegisterResult>;
   logout: () => void;
 };
 
@@ -27,19 +29,25 @@ const noopSubscribe = () => () => {};
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const token = useSyncExternalStore(subscribeToken, getToken, () => null);
   const isReady = useSyncExternalStore(noopSubscribe, alwaysReady, notReadyOnServer);
-  // Held as "the token we confirmed admin for" rather than a bare boolean, so
-  // logging out or switching accounts drops the privilege without a reset effect.
-  const [adminToken, setAdminToken] = useState<string | null>(null);
-  const isAdmin = token !== null && adminToken === token;
+  const [user, setUser] = useState<Me | null>(null);
+
+  const isSuperAdmin = token !== null && user?.role === "superadmin";
+  const isAdmin = token !== null && (user?.role === "admin" || user?.role === "superadmin");
+  const isMember = token !== null && user?.role === "member";
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setUser(null);
+      return;
+    }
     let cancelled = false;
     getMe()
-      .then((me) => {
-        if (!cancelled && me.role === "admin") setAdminToken(token);
+      .then((profile) => {
+        if (!cancelled) setUser(profile);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -50,17 +58,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(accessToken);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, displayName?: string, department?: string) => {
-    const { accessToken } = await registerAccount(email, password, displayName, department);
-    setToken(accessToken);
+  const register = useCallback(async (companyName: string, email: string, password: string, displayName: string) => {
+    return await registerAccount(companyName, email, password, displayName);
   }, []);
 
   const logout = useCallback(() => {
+    setUser(null);
     clearToken();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ token, isAdmin, isReady, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        token,
+        user,
+        isAdmin,
+        isSuperAdmin,
+        isMember,
+        isReady,
+        login,
+        register,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

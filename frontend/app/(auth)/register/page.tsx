@@ -2,27 +2,26 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { Button, Card, Input, Label } from "@/components/ui";
 
 export default function RegisterPage() {
+  const [companyName, setCompanyName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [department, setDepartment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const { register } = useAuth();
-  const router = useRouter();
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      await register(email, password, displayName || undefined, department || undefined);
-      router.replace("/");
+      await register(companyName.trim(), email.trim(), password, displayName.trim());
+      setIsSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -30,13 +29,64 @@ export default function RegisterPage() {
     }
   }
 
+  if (isSubmitted) {
+    return (
+      <Card className="w-full max-w-sm space-y-5 p-6 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gold/10 text-gold">
+          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">Registration Submitted</h1>
+          <p className="mt-2 text-sm text-text-secondary">
+            Your account for <span className="font-medium text-text-primary">{companyName}</span> is pending administrator approval.
+          </p>
+          <p className="mt-2 text-xs text-text-tertiary">
+            You will be able to log in once an administrator approves your request.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link href="/login" className="block w-full">
+            <Button variant="primary" className="w-full">
+              Go to Log in
+            </Button>
+          </Link>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-sm space-y-5 p-6">
       <div>
         <h1 className="text-xl font-semibold text-text-primary">Register</h1>
-        <p className="mt-1 text-sm text-text-secondary">Create your KnowledgeHub account.</p>
+        <p className="mt-1 text-sm text-text-secondary">Create a new company account.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1">
+          <Label htmlFor="companyName">Company Name</Label>
+          <Input
+            id="companyName"
+            type="text"
+            required
+            placeholder="Acme Corp"
+            value={companyName}
+            onChange={(event) => setCompanyName(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="displayName">Name</Label>
+          <Input
+            id="displayName"
+            type="text"
+            autoComplete="name"
+            required
+            placeholder="Jane Doe"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        </div>
         <div className="space-y-1">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -44,27 +94,9 @@ export default function RegisterPage() {
             type="email"
             autoComplete="email"
             required
+            placeholder="jane@acme.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="displayName">Name (optional)</Label>
-          <Input
-            id="displayName"
-            type="text"
-            autoComplete="name"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="department">Department (optional)</Label>
-          <Input
-            id="department"
-            type="text"
-            value={department}
-            onChange={(event) => setDepartment(event.target.value)}
           />
         </div>
         <div className="space-y-1">
@@ -82,7 +114,7 @@ export default function RegisterPage() {
         </div>
         {error && <p className="text-sm text-status-void">{error}</p>}
         <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? "Creating account…" : "Register"}
+          {isSubmitting ? "Submitting…" : "Register"}
         </Button>
       </form>
       <p className="text-sm text-text-secondary">

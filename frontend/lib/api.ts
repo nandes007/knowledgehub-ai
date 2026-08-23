@@ -237,6 +237,11 @@ export type Me = {
   email: string;
   displayName: string | null;
   role: string;
+  approvalStatus: string;
+  companyId: string | null;
+  companyName: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
 };
 
 export async function getMe(): Promise<Me> {
@@ -244,12 +249,26 @@ export async function getMe(): Promise<Me> {
   if (!response.ok) {
     throw new Error(`Failed to load profile: ${response.status}`);
   }
-  const { email, display_name, role } = (await response.json()) as {
+  const data = (await response.json()) as {
     email: string;
     display_name: string | null;
     role: string;
+    approval_status: string;
+    company_id: string | null;
+    company_name: string | null;
+    department_id: string | null;
+    department_name: string | null;
   };
-  return { email, displayName: display_name, role };
+  return {
+    email: data.email,
+    displayName: data.display_name,
+    role: data.role,
+    approvalStatus: data.approval_status,
+    companyId: data.company_id,
+    companyName: data.company_name,
+    departmentId: data.department_id,
+    departmentName: data.department_name,
+  };
 }
 
 export type Stats = {
@@ -289,24 +308,33 @@ export async function getStats(): Promise<Stats> {
 }
 
 export type AuthResult = { accessToken: string };
+export type RegisterResult = { message: string };
 
 export async function registerAccount(
+  companyName: string,
   email: string,
   password: string,
-  displayName?: string,
-  department?: string,
-): Promise<AuthResult> {
+  displayName: string,
+): Promise<RegisterResult> {
   const response = await apiFetch(`${API_URL}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, display_name: displayName, department }),
+    body: JSON.stringify({
+      company_name: companyName,
+      email,
+      password,
+      display_name: displayName,
+    }),
   });
   if (!response.ok) {
-    if (response.status === 409) throw new Error("An account with that email already exists.");
-    throw new Error("Registration failed. Please try again.");
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    if (response.status === 409) {
+      throw new Error(body.detail ?? "An account with that email or company already exists.");
+    }
+    throw new Error(body.detail ?? "Registration failed. Please try again.");
   }
-  const { access_token } = (await response.json()) as { access_token: string };
-  return { accessToken: access_token };
+  const { message } = (await response.json()) as { message: string };
+  return { message };
 }
 
 export async function loginAccount(email: string, password: string): Promise<AuthResult> {
@@ -316,7 +344,8 @@ export async function loginAccount(email: string, password: string): Promise<Aut
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) {
-    throw new Error("Invalid email or password.");
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? "Invalid email or password.");
   }
   const { access_token } = (await response.json()) as { access_token: string };
   return { accessToken: access_token };

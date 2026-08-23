@@ -18,6 +18,7 @@ from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
 from app.routers.documents import router as documents_router
 from app.routers.stats import router as stats_router
+from app.routers.superadmin import router as superadmin_router
 
 _access_logger = logging.getLogger("app.access")
 
@@ -40,7 +41,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(documents_router)
     app.include_router(stats_router)
+    app.include_router(superadmin_router)
 
     return app
 

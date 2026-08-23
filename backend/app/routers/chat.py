@@ -1,16 +1,16 @@
 import json
 import uuid
 from collections.abc import Iterator
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
-from datetime import datetime, timezone
-
 from app.db import get_engine
 from app.deps import CurrentUserDep
+from app.models.company import Company
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.rate_limit import limiter
@@ -48,7 +48,7 @@ def _get_or_create_conversation(
         return conversation
 
     conversation = session.get(Conversation, conversation_id)
-    if conversation is None or conversation.user_id != user_id:
+    if conversation is None or conversation.user_id != user_id or (company_id and conversation.company_id != company_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
 
@@ -123,7 +123,12 @@ def chat(
     vector_store: VectorStore = Depends(get_vector_store),
     engine: Engine = Depends(get_engine),
 ) -> StreamingResponse:
+    company_name = "KnowledgeHub"
     with Session(engine) as session:
+        if current_user.company_id:
+            company = session.get(Company, current_user.company_id)
+            if company:
+                company_name = company.name
         conversation = _get_or_create_conversation(
             session, payload.conversation_id, current_user.id, current_user.company_id
         )
@@ -140,6 +145,9 @@ def chat(
         payload.message,
         llm=llm,
         vector_store=vector_store,
+        company_name=company_name,
+        company_id=str(current_user.company_id) if current_user.company_id else None,
+        department_id=str(current_user.department_id) if current_user.department_id else None,
         department=current_user.department,
         role=current_user.role,
         history=history,

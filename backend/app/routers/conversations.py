@@ -30,9 +30,13 @@ def _derive_title(message: str) -> str:
 
 @router.get("/conversations", response_model=list[ConversationRead])
 def list_conversations(session: SessionDep, current_user: CurrentUserDep) -> list[Conversation]:
+    conditions = [Conversation.user_id == current_user.id]
+    if current_user.company_id:
+        conditions.append(Conversation.company_id == current_user.company_id)
+
     statement = (
         select(Conversation)
-        .where(Conversation.user_id == current_user.id)
+        .where(*conditions)
         .order_by(Conversation.updated_at.desc())
     )
     conversations = list(session.exec(statement))
@@ -57,7 +61,11 @@ def list_conversations(session: SessionDep, current_user: CurrentUserDep) -> lis
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
 def list_messages(conversation_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> list[Message]:
     conversation = session.get(Conversation, conversation_id)
-    if conversation is None or conversation.user_id != current_user.id:
+    if (
+        conversation is None
+        or conversation.user_id != current_user.id
+        or (current_user.company_id and conversation.company_id != current_user.company_id)
+    ):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     statement = (
@@ -74,7 +82,11 @@ def update_conversation(
     current_user: CurrentUserDep,
 ) -> Conversation:
     conversation = session.get(Conversation, conversation_id)
-    if conversation is None or conversation.user_id != current_user.id:
+    if (
+        conversation is None
+        or conversation.user_id != current_user.id
+        or (current_user.company_id and conversation.company_id != current_user.company_id)
+    ):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     new_title = payload.title.strip()
@@ -95,7 +107,11 @@ def delete_conversation(
     current_user: CurrentUserDep,
 ) -> None:
     conversation = session.get(Conversation, conversation_id)
-    if conversation is None or conversation.user_id != current_user.id:
+    if (
+        conversation is None
+        or conversation.user_id != current_user.id
+        or (current_user.company_id and conversation.company_id != current_user.company_id)
+    ):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     session.delete(conversation)

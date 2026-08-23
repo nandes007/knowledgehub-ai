@@ -152,6 +152,66 @@ def test_list_documents_respects_department_and_role_visibility(db_engine, tmp_p
         app.dependency_overrides.pop(get_vector_store, None)
 
 
+def test_chat_retrieval_respects_department_and_role_visibility(db_engine, tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path))
+    app.dependency_overrides[get_llm_provider] = lambda: _FakeLLM()
+    app.dependency_overrides[get_vector_store] = lambda: store
+    try:
+        env = _setup_test_tenancy(db_engine)
+        admin = env["admin_client"]
+        eng_user = env["eng_client"]
+        hr_user = env["hr_client"]
+        solo_user = env["solo_client"]
+
+        # Admin uploads company-wide document
+        admin.post(
+            "/documents",
+            files={"file": ("handbook.md", b"# Handbook\n\nCompany handbook rules", "text/markdown")},
+            data={"visibility": "company"},
+        )
+
+        # Admin uploads engineering-only document
+        admin.post(
+            "/documents",
+            files={"file": ("eng_spec.md", b"# Engineering Spec\n\nEngineering system spec", "text/markdown")},
+            data={"visibility": "department", "department_id": str(env["dept_eng_id"])},
+        )
+
+        # Admin uploads HR-only document
+        admin.post(
+            "/documents",
+            files={"file": ("hr_policy.md", b"# HR Policy\n\nHR policy rules", "text/markdown")},
+            data={"visibility": "department", "department_id": str(env["dept_hr_id"])},
+        )
+
+        # 1. Admin chat retrieves all
+        admin_sources = [s["filename"] for s in _sources(admin.post("/chat", json={"message": "specs"}))]
+        assert "handbook.md" in admin_sources
+        assert "eng_spec.md" in admin_sources
+        assert "hr_policy.md" in admin_sources
+
+        # 2. Engineering member retrieves handbook + eng_spec, but NOT hr_policy
+        eng_sources = [s["filename"] for s in _sources(eng_user.post("/chat", json={"message": "specs"}))]
+        assert "handbook.md" in eng_sources
+        assert "eng_spec.md" in eng_sources
+        assert "hr_policy.md" not in eng_sources
+
+        # 3. HR member retrieves handbook + hr_policy, but NOT eng_spec
+        hr_sources = [s["filename"] for s in _sources(hr_user.post("/chat", json={"message": "specs"}))]
+        assert "handbook.md" in hr_sources
+        assert "hr_policy.md" in hr_sources
+        assert "eng_spec.md" not in hr_sources
+
+        # 4. Solo member retrieves only handbook
+        solo_sources = [s["filename"] for s in _sources(solo_user.post("/chat", json={"message": "specs"}))]
+        assert "handbook.md" in solo_sources
+        assert "eng_spec.md" not in solo_sources
+        assert "hr_policy.md" not in solo_sources
+    finally:
+        app.dependency_overrides.pop(get_llm_provider, None)
+        app.dependency_overrides.pop(get_vector_store, None)
+
+
 def test_upload_rejects_department_visibility_without_a_department(db_engine, tmp_path):
     app.dependency_overrides[get_llm_provider] = lambda: _FakeLLM()
     app.dependency_overrides[get_vector_store] = lambda: VectorStore(persist_dir=str(tmp_path))

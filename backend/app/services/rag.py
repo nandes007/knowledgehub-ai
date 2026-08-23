@@ -9,9 +9,6 @@ _CANDIDATE_K = 20
 _RRF_K = 60
 _CHUNK_PREVIEW_LENGTH = 200
 
-# ponytail: hardcoded company; swap for the logged-in user's tenant when multi-tenant lands
-_COMPANY = "Nandes Tech"
-
 _SYSTEM_PROMPT_TEMPLATE = """You are KnowledgeHub AI, the internal knowledge assistant for {company}.
 You answer employee questions from {company}'s own documents, which are supplied \
 to you under "Context" below.
@@ -37,18 +34,36 @@ These turns need no Context - answer them directly and briefly:
 Style: concise and factual. Reply in the user's language. Short paragraphs or bullets.
 No preamble like "Based on the provided context" - just answer."""
 
-_SYSTEM_PROMPT = _SYSTEM_PROMPT_TEMPLATE.format(company=_COMPANY)
 
-
-def _visibility_where(*, department: str | None, role: str) -> dict | None:
-    """Admins see every document; everyone else sees company-wide docs plus
-    their own department's department-only docs."""
-    if role == "admin":
+def _visibility_where(
+    *,
+    company_id: str | None = None,
+    department_id: str | None = None,
+    department: str | None = None,
+    role: str = "member",
+) -> dict | None:
+    """Admins and superadmins see every document in their company; everyone else sees
+    company-wide docs plus their own department's docs."""
+    effective_dept = department_id or department
+    if role in ("admin", "superadmin"):
+        if company_id:
+            return {"company_id": company_id}
         return None
+
     conditions: list[dict] = [{"visibility": "company"}]
-    if department:
-        conditions.append({"$and": [{"visibility": "department"}, {"department": department}]})
-    return conditions[0] if len(conditions) == 1 else {"$or": conditions}
+    if effective_dept:
+        conditions.append(
+            {
+                "$and": [
+                    {"visibility": "department"},
+                    {"$or": [{"department_id": effective_dept}, {"department": effective_dept}]},
+                ]
+            }
+        )
+    vis_filter = conditions[0] if len(conditions) == 1 else {"$or": conditions}
+    if company_id:
+        return {"$and": [{"company_id": company_id}, vis_filter]}
+    return vis_filter
 
 
 def _reciprocal_rank_fusion(*ranked_lists: list[dict]) -> list[dict]:
@@ -79,12 +94,20 @@ def stream_answer(
     *,
     llm: LLMProvider,
     vector_store: VectorStore,
+    company_name: str = "KnowledgeHub",
+    company_id: str | None = None,
+    department_id: str | None = None,
     department: str | None = None,
     role: str = "member",
     history: list[dict[str, str]] | None = None,
 ) -> tuple[Iterator[str], list[dict], TokenUsage]:
     query_embedding = llm.embed_texts([question])[0]
-    where = _visibility_where(department=department, role=role)
+    where = _visibility_where(
+        company_id=company_id,
+        department_id=department_id,
+        department=department,
+        role=role,
+    )
     matches = _retrieve(question, query_embedding, vector_store, where)
 
     context = "\n\n---\n\n".join(m["text"] for m in matches)
@@ -94,8 +117,9 @@ def stream_answer(
         history_block = f"\n\nConversation so far:\n{history_text}"
 
     context_block = f"<context>\n{context}\n</context>" if context else "<context>(empty)</context>"
+    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(company=company_name)
     prompt = (
-        f"{_SYSTEM_PROMPT}\n\n{context_block}{history_block}\n\nQuestion: {question}\nAnswer:"
+        f"{system_prompt}\n\n{context_block}{history_block}\n\nQuestion: {question}\nAnswer:"
     )
 
     sources = [

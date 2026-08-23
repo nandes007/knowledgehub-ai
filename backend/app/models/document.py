@@ -12,12 +12,14 @@ class Document(SQLModel, table=True):
     __table_args__ = (
         CheckConstraint("status IN ('processing', 'ready', 'failed')", name="ck_documents_status"),
         CheckConstraint("visibility IN ('company', 'department')", name="ck_documents_visibility"),
-        Index("idx_documents_user", "user_id", "created_at"),
+        Index("idx_documents_company", "company_id", "created_at"),
+        Index("idx_documents_uploaded_by", "uploaded_by", "created_at"),
         Index("idx_documents_status", "status"),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, ondelete="CASCADE")
+    company_id: uuid.UUID = Field(foreign_key="companies.id", nullable=False, ondelete="CASCADE")
+    uploaded_by: uuid.UUID = Field(foreign_key="users.id", nullable=False, ondelete="CASCADE")
     filename: str
     content_type: str
     file_path: str
@@ -25,7 +27,9 @@ class Document(SQLModel, table=True):
     status: str = Field(default="processing", nullable=False)
     error_message: str | None = None
     doc_type: str = Field(default="general", nullable=False)
-    department: str | None = None
+    department_id: uuid.UUID | None = Field(
+        default=None, foreign_key="departments.id", ondelete="SET NULL", nullable=True
+    )
     visibility: str = Field(default="company", nullable=False)
     chunk_count: int | None = None
     created_at: datetime = utc_timestamp_field()

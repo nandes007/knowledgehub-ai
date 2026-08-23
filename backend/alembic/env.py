@@ -17,7 +17,8 @@ if config.config_file_name:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Set the database URL dynamically from app settings if not already provided
-if not config.get_main_option("sqlalchemy.url"):
+url = config.get_main_option("sqlalchemy.url")
+if not url or url == "postgresql://user:pass@localhost/db":
     safe_url = settings.database_url.replace("%", "%%")
     config.set_main_option("sqlalchemy.url", safe_url)
 

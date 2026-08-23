@@ -39,13 +39,13 @@ def test_chat_returns_429_after_exceeding_the_per_user_limit(client, tmp_path):
     assert any(r.status_code == 200 for r in responses)
 
 
-def test_upload_document_returns_429_after_exceeding_the_per_user_limit(client, tmp_path, monkeypatch):
+def test_upload_document_returns_429_after_exceeding_the_per_user_limit(admin_client, tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
     _override(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
     try:
         responses = [
-            client.post(
+            admin_client.post(
                 "/documents",
                 files={"file": (f"doc{i}.md", f"# Doc {i}\n\ncontent {i}".encode(), "text/markdown")},
             )

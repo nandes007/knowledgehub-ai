@@ -28,6 +28,7 @@ def test_stats_returns_message_counts_doc_count_and_estimated_cost(client, db_en
     conversation_id = uuid.UUID(client.post("/conversations").json()["id"])
 
     with Session(db_engine) as session:
+        user = session.get(User, test_user_id)
         session.add(Message(conversation_id=conversation_id, role="user", content="hi"))
         session.add(
             Message(conversation_id=conversation_id, role="assistant", content="hello", token_count=1000)
@@ -35,6 +36,7 @@ def test_stats_returns_message_counts_doc_count_and_estimated_cost(client, db_en
         session.add(
             Document(
                 user_id=test_user_id,
+                company_id=user.company_id,
                 filename="a.md",
                 content_type="text/markdown",
                 file_path="/tmp/a.md",
@@ -57,9 +59,11 @@ def test_stats_returns_documents_per_user(client, other_client, db_engine, test_
 
     with Session(db_engine) as session:
         for index, owner in enumerate([test_user_id, other_user_id, other_user_id]):
+            user = session.get(User, owner)
             session.add(
                 Document(
                     user_id=owner,
+                    company_id=user.company_id,
                     filename=f"{index}.md",
                     content_type="text/markdown",
                     file_path=f"/tmp/{index}.md",

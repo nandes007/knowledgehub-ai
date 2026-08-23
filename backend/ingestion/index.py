@@ -58,6 +58,8 @@ class VectorStore:
         chunks: list[Chunk],
         embeddings: list[list[float]],
         doc_type: str = "general",
+        company_id: str | None = None,
+        department_id: str | None = None,
         department: str | None = None,
         visibility: str = "company",
     ) -> int:
@@ -65,10 +67,12 @@ class VectorStore:
         metadatas = [
             {
                 "document_id": document_id,
+                "company_id": company_id or "",
                 "user_id": user_id,
                 "filename": filename,
                 "doc_type": doc_type,
-                "department": department or "",
+                "department_id": department_id or "",
+                "department": department or department_id or "",
                 "visibility": visibility,
                 "h1": c.h1 or "",
                 "h2": c.h2 or "",

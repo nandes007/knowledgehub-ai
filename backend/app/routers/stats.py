@@ -40,7 +40,7 @@ def get_stats(session: SessionDep, current_user: CurrentUserDep) -> dict:
 
     documents_per_user = session.exec(
         select(User.email, func.count(Document.id))
-        .join(Document, Document.user_id == User.id)
+        .join(Document, Document.uploaded_by == User.id)
         .group_by(User.email)
         .order_by(func.count(Document.id).desc(), User.email)
     ).all()

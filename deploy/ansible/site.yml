@@ -202,7 +202,7 @@
       changed_when: true
       ansible.builtin.command:
         chdir: "{{ app_dir }}"
-        cmd: podman-compose -f docker-compose.prod.yml build
+        cmd: podman-compose -f docker-compose.prod.yml build --no-cache
 
     - name: Run database migrations
       environment:

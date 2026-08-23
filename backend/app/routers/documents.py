@@ -73,6 +73,7 @@ async def upload_document(
     document = Document(
         id=document_id,
         user_id=current_user.id,
+        company_id=current_user.company_id,
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
         file_path=str(file_path),

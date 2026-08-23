@@ -35,10 +35,13 @@ def _sse(event: str, data: dict) -> str:
 
 
 def _get_or_create_conversation(
-    session: Session, conversation_id: uuid.UUID | None, user_id: uuid.UUID
+    session: Session,
+    conversation_id: uuid.UUID | None,
+    user_id: uuid.UUID,
+    company_id: uuid.UUID | None = None,
 ) -> Conversation:
     if conversation_id is None:
-        conversation = Conversation(user_id=user_id)
+        conversation = Conversation(user_id=user_id, company_id=company_id)
         session.add(conversation)
         session.commit()
         session.refresh(conversation)
@@ -121,7 +124,9 @@ def chat(
     engine: Engine = Depends(get_engine),
 ) -> StreamingResponse:
     with Session(engine) as session:
-        conversation = _get_or_create_conversation(session, payload.conversation_id, current_user.id)
+        conversation = _get_or_create_conversation(
+            session, payload.conversation_id, current_user.id, current_user.company_id
+        )
         history = _recent_history(session, conversation.id, _HISTORY_LIMIT)
         if conversation.title == "New chat":
             conversation.title = _derive_title(payload.message)

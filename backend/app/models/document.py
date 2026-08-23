@@ -34,3 +34,16 @@ class Document(SQLModel, table=True):
     chunk_count: int | None = None
     created_at: datetime = utc_timestamp_field()
     updated_at: datetime = utc_timestamp_field()
+
+    def __init__(self, **data):
+        if "user_id" in data and "uploaded_by" not in data:
+            data["uploaded_by"] = data.pop("user_id")
+        super().__init__(**data)
+
+    @property
+    def user_id(self) -> uuid.UUID:
+        return self.uploaded_by
+
+    @user_id.setter
+    def user_id(self, val: uuid.UUID) -> None:
+        self.uploaded_by = val

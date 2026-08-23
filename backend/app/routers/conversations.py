@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.post("/conversations", response_model=ConversationRead)
 def create_conversation(session: SessionDep, current_user: CurrentUserDep) -> Conversation:
-    conversation = Conversation(user_id=current_user.id)
+    conversation = Conversation(user_id=current_user.id, company_id=current_user.company_id)
     session.add(conversation)
     session.commit()
     session.refresh(conversation)

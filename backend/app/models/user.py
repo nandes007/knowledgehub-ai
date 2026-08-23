@@ -31,3 +31,7 @@ class User(SQLModel, table=True):
     role: str = Field(default="member", nullable=False)
     approval_status: str = Field(default="pending", nullable=False)
     created_at: datetime = utc_timestamp_field()
+
+    @property
+    def department(self) -> str | None:
+        return None

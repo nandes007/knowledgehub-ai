@@ -4,6 +4,8 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.main import app
+from app.models.company import Company
+from app.models.department import Department
 from app.models.document import Document
 from app.models.user import User
 from app.services.auth import verify_password
@@ -29,65 +31,196 @@ def _clear_overrides() -> None:
     app.dependency_overrides.pop(get_vector_store, None)
 
 
-def test_register_creates_a_user_and_returns_a_token(anon_client):
+def test_register_creates_company_and_pending_admin_and_returns_message(anon_client, db_engine):
     response = anon_client.post(
         "/auth/register",
-        json={"email": "new-user@example.com", "password": "password123"},
+        json={
+            "company_name": "Acme Corp",
+            "email": "admin@acme.com",
+            "password": "password123",
+            "display_name": "Acme Admin",
+        },
     )
 
     assert response.status_code == 201
     body = response.json()
-    assert body["access_token"]
-    assert body["token_type"] == "bearer"
-
-
-def test_register_hashes_the_password(anon_client, db_engine):
-    anon_client.post(
-        "/auth/register",
-        json={"email": "new-user@example.com", "password": "password123"},
-    )
+    assert body == {"message": "Registration pending approval"}
+    assert "access_token" not in body
 
     with Session(db_engine) as session:
-        user = session.exec(select(User).where(User.email == "new-user@example.com")).one()
+        company = session.exec(select(Company).where(Company.name == "Acme Corp")).first()
+        assert company is not None
+        assert company.status == "active"
 
-    assert user.password_hash != "password123"
-    assert verify_password("password123", user.password_hash)
+        user = session.exec(select(User).where(User.email == "admin@acme.com")).first()
+        assert user is not None
+        assert user.company_id == company.id
+        assert user.role == "admin"
+        assert user.approval_status == "pending"
+        assert user.display_name == "Acme Admin"
+        assert user.password_hash != "password123"
+        assert verify_password("password123", user.password_hash)
 
 
-def test_register_rejects_a_duplicate_email(anon_client):
+def test_register_rejects_duplicate_company_name(anon_client):
     anon_client.post(
         "/auth/register",
-        json={"email": "dup@example.com", "password": "password123"},
+        json={
+            "company_name": "Acme Corp",
+            "email": "admin1@acme.com",
+            "password": "password123",
+        },
     )
 
     response = anon_client.post(
         "/auth/register",
-        json={"email": "dup@example.com", "password": "a-different-password"},
+        json={
+            "company_name": "Acme Corp",
+            "email": "admin2@acme.com",
+            "password": "password123",
+        },
     )
 
     assert response.status_code == 409
+    assert response.json()["detail"] == "Company name already taken"
 
 
-def test_login_returns_a_token_for_correct_credentials(anon_client):
+def test_register_rejects_duplicate_email(anon_client):
     anon_client.post(
         "/auth/register",
-        json={"email": "user@example.com", "password": "password123"},
+        json={
+            "company_name": "Acme Corp",
+            "email": "admin@example.com",
+            "password": "password123",
+        },
+    )
+
+    response = anon_client.post(
+        "/auth/register",
+        json={
+            "company_name": "Beta Corp",
+            "email": "admin@example.com",
+            "password": "password123",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Email already registered"
+
+
+def test_login_rejects_pending_user(anon_client):
+    anon_client.post(
+        "/auth/register",
+        json={
+            "company_name": "Acme Corp",
+            "email": "pending@example.com",
+            "password": "password123",
+        },
     )
 
     response = anon_client.post(
         "/auth/login",
-        json={"email": "user@example.com", "password": "password123"},
+        json={"email": "pending@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Your account is pending approval"
+
+
+def test_login_rejects_rejected_user(anon_client, db_engine):
+    anon_client.post(
+        "/auth/register",
+        json={
+            "company_name": "Acme Corp",
+            "email": "rejected@example.com",
+            "password": "password123",
+        },
+    )
+
+    with Session(db_engine) as session:
+        user = session.exec(select(User).where(User.email == "rejected@example.com")).one()
+        user.approval_status = "rejected"
+        session.add(user)
+        session.commit()
+
+    response = anon_client.post(
+        "/auth/login",
+        json={"email": "rejected@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Your registration has been rejected"
+
+
+def test_login_rejects_user_in_suspended_company(anon_client, db_engine):
+    anon_client.post(
+        "/auth/register",
+        json={
+            "company_name": "Acme Corp",
+            "email": "suspended@example.com",
+            "password": "password123",
+        },
+    )
+
+    with Session(db_engine) as session:
+        user = session.exec(select(User).where(User.email == "suspended@example.com")).one()
+        user.approval_status = "approved"
+        session.add(user)
+        company = session.get(Company, user.company_id)
+        company.status = "suspended"
+        session.add(company)
+        session.commit()
+
+    response = anon_client.post(
+        "/auth/login",
+        json={"email": "suspended@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Your company has been suspended"
+
+
+def test_login_returns_token_for_approved_user_in_active_company(anon_client, db_engine):
+    anon_client.post(
+        "/auth/register",
+        json={
+            "company_name": "Acme Corp",
+            "email": "approved@example.com",
+            "password": "password123",
+        },
+    )
+
+    with Session(db_engine) as session:
+        user = session.exec(select(User).where(User.email == "approved@example.com")).one()
+        user.approval_status = "approved"
+        session.add(user)
+        session.commit()
+
+    response = anon_client.post(
+        "/auth/login",
+        json={"email": "approved@example.com", "password": "password123"},
     )
 
     assert response.status_code == 200
     assert response.json()["access_token"]
+    assert response.json()["token_type"] == "bearer"
 
 
-def test_login_rejects_the_wrong_password(anon_client):
+def test_login_rejects_wrong_password(anon_client, db_engine):
     anon_client.post(
         "/auth/register",
-        json={"email": "user@example.com", "password": "password123"},
+        json={
+            "company_name": "Acme Corp",
+            "email": "user@example.com",
+            "password": "password123",
+        },
     )
+
+    with Session(db_engine) as session:
+        user = session.exec(select(User).where(User.email == "user@example.com")).one()
+        user.approval_status = "approved"
+        session.add(user)
+        session.commit()
 
     response = anon_client.post(
         "/auth/login",
@@ -95,22 +228,48 @@ def test_login_rejects_the_wrong_password(anon_client):
     )
 
     assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
 
 
-def test_login_rejects_an_unknown_email(anon_client):
+def test_login_rejects_unknown_email(anon_client):
     response = anon_client.post(
         "/auth/login",
         json={"email": "nobody@example.com", "password": "password123"},
     )
 
     assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
 
 
-def test_me_returns_the_current_users_email_and_role(client, db_engine, test_user_id):
+def test_me_returns_tenant_and_approval_details(client, db_engine, test_user_id):
+    with Session(db_engine) as session:
+        user = session.get(User, test_user_id)
+        company = session.get(Company, user.company_id)
+        company_id = company.id
+        dept = Department(company_id=company.id, name="Engineering")
+        session.add(dept)
+        session.commit()
+        session.refresh(dept)
+        dept_id = dept.id
+
+        user.department_id = dept.id
+        user.display_name = "Test User"
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
     response = client.get("/auth/me")
 
     assert response.status_code == 200
-    assert response.json() == {"email": "test-user@example.com", "display_name": None, "role": "member"}
+    data = response.json()
+    assert data["email"] == "test-user@example.com"
+    assert data["display_name"] == "Test User"
+    assert data["role"] == "member"
+    assert data["approval_status"] == "approved"
+    assert data["company_name"] == "Test Company"
+    assert str(data["company_id"]) == str(company_id)
+    assert data["department_name"] == "Engineering"
+    assert str(data["department_id"]) == str(dept_id)
 
 
 def test_me_reflects_an_admin_role(client, db_engine, test_user_id):

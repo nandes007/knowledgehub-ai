@@ -3,12 +3,14 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app import models  # noqa: F401 - registers tables on SQLModel.metadata
 from app.db import get_engine, get_session
 from app.main import app
-from app.services.auth import decode_access_token
+from app.models.company import Company
+from app.models.user import User
+from app.services.auth import create_access_token, decode_access_token, hash_password
 
 
 @pytest.fixture
@@ -37,11 +39,32 @@ def _override_db(db_engine) -> None:
     app.dependency_overrides[get_engine] = lambda: db_engine
 
 
-def _registered_client(db_engine, email: str) -> TestClient:
+def _registered_client(db_engine, email: str, company_name: str = "Test Company") -> TestClient:
     _override_db(db_engine)
+    with Session(db_engine) as session:
+        company = session.exec(select(Company).where(Company.name == company_name)).first()
+        if not company:
+            company = Company(name=company_name, status="active")
+            session.add(company)
+            session.commit()
+            session.refresh(company)
+
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user:
+            user = User(
+                email=email,
+                password_hash=hash_password("password123"),
+                company_id=company.id,
+                role="member",
+                approval_status="approved",
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+        user_id = user.id
+
     test_client = TestClient(app)
-    response = test_client.post("/auth/register", json={"email": email, "password": "password123"})
-    test_client.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
+    test_client.headers["Authorization"] = f"Bearer {create_access_token(user_id)}"
     return test_client
 
 

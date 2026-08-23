@@ -11,6 +11,7 @@ from app.models.user import User
 from app.services.auth import verify_password
 from app.services.llm import get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
+from tests.conftest import _registered_client
 
 
 class _FakeLLM:
@@ -314,27 +315,35 @@ def test_protected_route_with_a_garbage_token_returns_401(anon_client):
     assert response.status_code == 401
 
 
-def test_user_cannot_list_another_users_documents(client, other_client, tmp_path, monkeypatch):
+def test_user_cannot_list_another_company_documents(db_engine, tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
     _override_llm(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
+
+    client_a = _registered_client(db_engine, "admin_a@comp_a.com", company_name="Company A", role="admin")
+    client_b = _registered_client(db_engine, "admin_b@comp_b.com", company_name="Company B", role="admin")
+
     try:
-        client.post("/documents", files={"file": ("mine.md", b"# Mine", "text/markdown")})
-        response = other_client.get("/documents")
+        client_a.post("/documents", files={"file": ("mine.md", b"# Mine", "text/markdown")})
+        response = client_b.get("/documents")
     finally:
         _clear_overrides()
 
     assert response.json() == []
 
 
-def test_user_cannot_delete_another_users_document(client, other_client, db_engine, tmp_path, monkeypatch):
+def test_user_cannot_delete_another_company_document(db_engine, tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
     _override_llm(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
+
+    client_a = _registered_client(db_engine, "admin_a2@comp_a.com", company_name="Company A", role="admin")
+    client_b = _registered_client(db_engine, "admin_b2@comp_b.com", company_name="Company B", role="admin")
+
     try:
-        upload = client.post("/documents", files={"file": ("mine.md", b"# Mine", "text/markdown")})
+        upload = client_a.post("/documents", files={"file": ("mine.md", b"# Mine", "text/markdown")})
         document_id = upload.json()["id"]
-        response = other_client.delete(f"/documents/{document_id}")
+        response = client_b.delete(f"/documents/{document_id}")
     finally:
         _clear_overrides()
 

@@ -39,7 +39,9 @@ def _override_db(db_engine) -> None:
     app.dependency_overrides[get_engine] = lambda: db_engine
 
 
-def _registered_client(db_engine, email: str, company_name: str = "Test Company") -> TestClient:
+def _registered_client(
+    db_engine, email: str, company_name: str = "Test Company", role: str = "member"
+) -> TestClient:
     _override_db(db_engine)
     with Session(db_engine) as session:
         company = session.exec(select(Company).where(Company.name == company_name)).first()
@@ -55,7 +57,7 @@ def _registered_client(db_engine, email: str, company_name: str = "Test Company"
                 email=email,
                 password_hash=hash_password("password123"),
                 company_id=company.id,
-                role="member",
+                role=role,
                 approval_status="approved",
             )
             session.add(user)
@@ -81,6 +83,16 @@ def anon_client(db_engine):
 @pytest.fixture
 def client(db_engine):
     test_client = _registered_client(db_engine, "test-user@example.com")
+    try:
+        yield test_client
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_engine, None)
+
+
+@pytest.fixture
+def admin_client(db_engine):
+    test_client = _registered_client(db_engine, "admin-user@example.com", role="admin")
     try:
         yield test_client
     finally:

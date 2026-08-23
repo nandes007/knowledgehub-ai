@@ -1,6 +1,6 @@
 import hashlib
-import uuid
 from pathlib import Path
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import Engine
@@ -8,7 +8,8 @@ from sqlmodel import select
 
 from app.config import settings
 from app.db import get_engine
-from app.deps import CurrentUserDep, SessionDep
+from app.deps import AdminDep, CurrentUserDep, SessionDep
+from app.models.department import Department
 from app.models.document import Document
 from app.rate_limit import limiter
 from app.schemas.document import DocumentRead, DocumentSummary
@@ -28,14 +29,17 @@ async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
     session: SessionDep,
-    current_user: CurrentUserDep,
+    current_user: AdminDep,
     file: UploadFile = File(...),
-    department: str | None = Form(None),
+    department_id: uuid.UUID | None = Form(None),
     visibility: str = Form("company"),
     engine: Engine = Depends(get_engine),
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> Document:
+    if current_user.company_id is None:
+        raise HTTPException(status_code=400, detail="Admin must belong to a company")
+
     contents = await file.read()
 
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
@@ -51,12 +55,19 @@ async def upload_document(
 
     if visibility not in _VISIBILITIES:
         raise HTTPException(status_code=400, detail=f"Visibility must be one of {sorted(_VISIBILITIES)}.")
-    if visibility == "department" and not department:
+    if visibility == "department" and not department_id:
         raise HTTPException(status_code=400, detail="A department is required for department-only visibility.")
+
+    if department_id is not None:
+        dept = session.get(Department, department_id)
+        if dept is None or dept.company_id != current_user.company_id:
+            raise HTTPException(status_code=404, detail="Department not found")
 
     file_hash = hashlib.sha256(contents).hexdigest()
     existing = session.exec(
-        select(Document).where(Document.user_id == current_user.id, Document.file_hash == file_hash)
+        select(Document).where(
+            Document.company_id == current_user.company_id, Document.file_hash == file_hash
+        )
     ).first()
     if existing is not None:
         raise HTTPException(
@@ -72,14 +83,14 @@ async def upload_document(
 
     document = Document(
         id=document_id,
-        user_id=current_user.id,
         company_id=current_user.company_id,
+        uploaded_by=current_user.id,
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
         file_path=str(file_path),
         file_hash=file_hash,
         status="processing",
-        department=department,
+        department_id=department_id,
         visibility=visibility,
     )
     session.add(document)
@@ -99,11 +110,28 @@ async def upload_document(
 
 @router.get("/documents", response_model=list[DocumentSummary])
 def list_documents(session: SessionDep, current_user: CurrentUserDep) -> list[Document]:
-    statement = (
-        select(Document)
-        .where(Document.user_id == current_user.id)
-        .order_by(Document.created_at.desc())
-    )
+    if current_user.company_id is None:
+        return []
+
+    if current_user.role in ("admin", "superadmin"):
+        statement = select(Document).where(Document.company_id == current_user.company_id)
+    else:
+        if current_user.department_id is not None:
+            statement = select(Document).where(
+                Document.company_id == current_user.company_id,
+                (Document.visibility == "company")
+                | (
+                    (Document.visibility == "department")
+                    & (Document.department_id == current_user.department_id)
+                ),
+            )
+        else:
+            statement = select(Document).where(
+                Document.company_id == current_user.company_id,
+                Document.visibility == "company",
+            )
+
+    statement = statement.order_by(Document.created_at.desc())
     return list(session.exec(statement))
 
 
@@ -111,11 +139,14 @@ def list_documents(session: SessionDep, current_user: CurrentUserDep) -> list[Do
 def delete_document(
     document_id: uuid.UUID,
     session: SessionDep,
-    current_user: CurrentUserDep,
+    current_user: AdminDep,
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> None:
+    if current_user.company_id is None:
+        raise HTTPException(status_code=400, detail="Admin must belong to a company")
+
     document = session.get(Document, document_id)
-    if document is None or document.user_id != current_user.id:
+    if document is None or document.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Document not found")
 
     Path(document.file_path).unlink(missing_ok=True)

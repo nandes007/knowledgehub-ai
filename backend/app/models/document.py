@@ -47,3 +47,17 @@ class Document(SQLModel, table=True):
     @user_id.setter
     def user_id(self, val: uuid.UUID) -> None:
         self.uploaded_by = val
+
+    @property
+    def department(self) -> str | None:
+        return str(self.department_id) if self.department_id else None
+
+    @department.setter
+    def department(self, val: str | None) -> None:
+        if val is None:
+            self.department_id = None
+        else:
+            try:
+                self.department_id = uuid.UUID(val)
+            except (ValueError, TypeError):
+                pass

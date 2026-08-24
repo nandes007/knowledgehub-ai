@@ -350,3 +350,392 @@ export async function loginAccount(email: string, password: string): Promise<Aut
   const { access_token } = (await response.json()) as { access_token: string };
   return { accessToken: access_token };
 }
+
+export type SuperadminUser = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: string;
+  approvalStatus: string;
+  companyId: string | null;
+  companyName: string | null;
+  departmentId: string | null;
+  createdAt: string;
+};
+
+export async function listPendingUsers(): Promise<SuperadminUser[]> {
+  const response = await apiFetch(`${API_URL}/superadmin/users?approval_status=pending`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to load pending users: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    company_name: string | null;
+    department_id: string | null;
+    created_at: string;
+  }[];
+  return data.map((u) => ({
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    companyName: u.company_name,
+    departmentId: u.department_id,
+    createdAt: u.created_at,
+  }));
+}
+
+export async function approveUser(userId: string): Promise<SuperadminUser> {
+  const response = await apiFetch(`${API_URL}/superadmin/users/${userId}/approve`, {
+    method: "PATCH",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to approve user: ${response.status}`);
+  }
+  const u = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    company_name: string | null;
+    department_id: string | null;
+    created_at: string;
+  };
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    companyName: u.company_name,
+    departmentId: u.department_id,
+    createdAt: u.created_at,
+  };
+}
+
+export async function rejectUser(userId: string): Promise<SuperadminUser> {
+  const response = await apiFetch(`${API_URL}/superadmin/users/${userId}/reject`, {
+    method: "PATCH",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to reject user: ${response.status}`);
+  }
+  const u = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    company_name: string | null;
+    department_id: string | null;
+    created_at: string;
+  };
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    companyName: u.company_name,
+    departmentId: u.department_id,
+    createdAt: u.created_at,
+  };
+}
+
+export type SuperadminCompany = {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listCompanies(): Promise<SuperadminCompany[]> {
+  const response = await apiFetch(`${API_URL}/superadmin/companies`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to load companies: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    name: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }[];
+  return data.map((c) => ({
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  }));
+}
+
+export async function suspendCompany(companyId: string): Promise<SuperadminCompany> {
+  const response = await apiFetch(`${API_URL}/superadmin/companies/${companyId}/suspend`, {
+    method: "PATCH",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to suspend company: ${response.status}`);
+  }
+  const c = (await response.json()) as {
+    id: string;
+    name: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  };
+  return {
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  };
+}
+
+export async function activateCompany(companyId: string): Promise<SuperadminCompany> {
+  const response = await apiFetch(`${API_URL}/superadmin/companies/${companyId}/activate`, {
+    method: "PATCH",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to activate company: ${response.status}`);
+  }
+  const c = (await response.json()) as {
+    id: string;
+    name: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  };
+  return {
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  };
+}
+
+export type TeamUser = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: string;
+  approvalStatus: string;
+  companyId: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  createdAt: string;
+};
+
+export type CreateUserPayload = {
+  email: string;
+  password: string;
+  displayName?: string;
+  departmentId: string;
+  role?: string;
+};
+
+export type UpdateUserPayload = {
+  displayName?: string;
+  departmentId?: string;
+  role?: string;
+};
+
+export async function listTeamUsers(): Promise<TeamUser[]> {
+  const response = await apiFetch(`${API_URL}/users`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to load team users: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    department_id: string | null;
+    department_name: string | null;
+    created_at: string;
+  }[];
+  return data.map((u) => ({
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    departmentId: u.department_id,
+    departmentName: u.department_name,
+    createdAt: u.created_at,
+  }));
+}
+
+export async function createUser(payload: CreateUserPayload): Promise<TeamUser> {
+  const response = await apiFetch(`${API_URL}/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: payload.email,
+      password: payload.password,
+      display_name: payload.displayName,
+      department_id: payload.departmentId,
+      role: payload.role ?? "member",
+    }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to create user: ${response.status}`);
+  }
+  const u = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    department_id: string | null;
+    department_name: string | null;
+    created_at: string;
+  };
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    departmentId: u.department_id,
+    departmentName: u.department_name,
+    createdAt: u.created_at,
+  };
+}
+
+export async function updateUser(userId: string, payload: UpdateUserPayload): Promise<TeamUser> {
+  const response = await apiFetch(`${API_URL}/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      display_name: payload.displayName,
+      department_id: payload.departmentId,
+      role: payload.role,
+    }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to update user: ${response.status}`);
+  }
+  const u = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    department_id: string | null;
+    department_name: string | null;
+    created_at: string;
+  };
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    departmentId: u.department_id,
+    departmentName: u.department_name,
+    createdAt: u.created_at,
+  };
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const response = await apiFetch(`${API_URL}/users/${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to delete user: ${response.status}`);
+  }
+}
+
+export type Department = {
+  id: string;
+  name: string;
+  companyId: string;
+  createdAt: string;
+};
+
+export async function listDepartments(): Promise<Department[]> {
+  const response = await apiFetch(`${API_URL}/departments`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to load departments: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    name: string;
+    company_id: string;
+    created_at: string;
+  }[];
+  return data.map((d) => ({
+    id: d.id,
+    name: d.name,
+    companyId: d.company_id,
+    createdAt: d.created_at,
+  }));
+}
+
+export async function createDepartment(name: string): Promise<Department> {
+  const response = await apiFetch(`${API_URL}/departments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to create department: ${response.status}`);
+  }
+  const d = (await response.json()) as {
+    id: string;
+    name: string;
+    company_id: string;
+    created_at: string;
+  };
+  return {
+    id: d.id,
+    name: d.name,
+    companyId: d.company_id,
+    createdAt: d.created_at,
+  };
+}
+
+export async function deleteDepartment(departmentId: string): Promise<void> {
+  const response = await apiFetch(`${API_URL}/departments/${departmentId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to delete department: ${response.status}`);
+  }
+}

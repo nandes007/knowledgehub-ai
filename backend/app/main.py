@@ -16,6 +16,7 @@ from app.rate_limit import limiter
 from app.routers.auth import router as auth_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
+from app.routers.departments import router as departments_router
 from app.routers.documents import router as documents_router
 from app.routers.stats import router as stats_router
 from app.routers.superadmin import router as superadmin_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(chat_router)
     app.include_router(conversations_router)
+    app.include_router(departments_router)
     app.include_router(documents_router)
     app.include_router(stats_router)
     app.include_router(superadmin_router)

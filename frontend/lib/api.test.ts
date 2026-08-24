@@ -1,17 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  activateCompany,
+  approveUser,
   createConversation,
+  createDepartment,
+  createUser,
   deleteConversation,
+  deleteDepartment,
   deleteDocument,
+  deleteUser,
   getConversationMessages,
   getMe,
   getStats,
+  listCompanies,
   listConversations,
+  listDepartments,
   listDocuments,
+  listPendingUsers,
+  listTeamUsers,
   loginAccount,
   registerAccount,
+  rejectUser,
   renameConversation,
   sendChatMessage,
+  suspendCompany,
+  updateUser,
   uploadDocument,
 } from "./api";
 import { clearToken, getToken, setToken } from "./auth";
@@ -572,5 +585,357 @@ describe("getStats", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("forbidden", { status: 403 })));
 
     await expect(getStats()).rejects.toThrow("Admin access required.");
+  });
+});
+
+describe("listPendingUsers", () => {
+  it("GETs /superadmin/users?approval_status=pending and maps users", async () => {
+    const mockData = [
+      {
+        id: "u1",
+        email: "alice@acme.com",
+        display_name: "Alice Admin",
+        role: "admin",
+        approval_status: "pending",
+        company_id: "c1",
+        company_name: "Acme Corp",
+        department_id: null,
+        created_at: "2026-08-24T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const users = await listPendingUsers();
+
+    expect(users).toEqual([
+      {
+        id: "u1",
+        email: "alice@acme.com",
+        displayName: "Alice Admin",
+        role: "admin",
+        approvalStatus: "pending",
+        companyId: "c1",
+        companyName: "Acme Corp",
+        departmentId: null,
+        createdAt: "2026-08-24T00:00:00Z",
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/superadmin/users?approval_status=pending");
+  });
+
+  it("throws on error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403 })));
+    await expect(listPendingUsers()).rejects.toThrow("Failed to load pending users: 403");
+  });
+});
+
+describe("approveUser", () => {
+  it("PATCHes /superadmin/users/{id}/approve and returns approved user", async () => {
+    const mockUser = {
+      id: "u1",
+      email: "alice@acme.com",
+      display_name: "Alice",
+      role: "admin",
+      approval_status: "approved",
+      company_id: "c1",
+      company_name: "Acme Corp",
+      department_id: null,
+      created_at: "2026-08-24T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await approveUser("u1");
+
+    expect(result.approvalStatus).toBe("approved");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/superadmin/users/u1/approve");
+    expect(options.method).toBe("PATCH");
+  });
+
+  it("throws when approval fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "User not found" }), { status: 404 })),
+    );
+    await expect(approveUser("u1")).rejects.toThrow("User not found");
+  });
+});
+
+describe("rejectUser", () => {
+  it("PATCHes /superadmin/users/{id}/reject and returns rejected user", async () => {
+    const mockUser = {
+      id: "u1",
+      email: "alice@acme.com",
+      display_name: "Alice",
+      role: "admin",
+      approval_status: "rejected",
+      company_id: "c1",
+      company_name: "Acme Corp",
+      department_id: null,
+      created_at: "2026-08-24T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await rejectUser("u1");
+
+    expect(result.approvalStatus).toBe("rejected");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/superadmin/users/u1/reject");
+    expect(options.method).toBe("PATCH");
+  });
+});
+
+describe("listCompanies", () => {
+  it("GETs /superadmin/companies and maps companies", async () => {
+    const mockData = [
+      {
+        id: "c1",
+        name: "Acme Corp",
+        status: "active",
+        created_at: "2026-08-24T00:00:00Z",
+        updated_at: "2026-08-24T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const companies = await listCompanies();
+
+    expect(companies).toEqual([
+      {
+        id: "c1",
+        name: "Acme Corp",
+        status: "active",
+        createdAt: "2026-08-24T00:00:00Z",
+        updatedAt: "2026-08-24T00:00:00Z",
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/superadmin/companies");
+  });
+});
+
+describe("suspendCompany and activateCompany", () => {
+  it("PATCHes /superadmin/companies/{id}/suspend", async () => {
+    const mockCompany = {
+      id: "c1",
+      name: "Acme Corp",
+      status: "suspended",
+      created_at: "2026-08-24T00:00:00Z",
+      updated_at: "2026-08-24T01:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockCompany), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await suspendCompany("c1");
+
+    expect(result.status).toBe("suspended");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/superadmin/companies/c1/suspend");
+    expect(options.method).toBe("PATCH");
+  });
+
+  it("PATCHes /superadmin/companies/{id}/activate", async () => {
+    const mockCompany = {
+      id: "c1",
+      name: "Acme Corp",
+      status: "active",
+      created_at: "2026-08-24T00:00:00Z",
+      updated_at: "2026-08-24T01:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockCompany), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await activateCompany("c1");
+
+    expect(result.status).toBe("active");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/superadmin/companies/c1/activate");
+    expect(options.method).toBe("PATCH");
+  });
+});
+
+describe("listTeamUsers", () => {
+  it("GETs /users and maps team members", async () => {
+    const mockData = [
+      {
+        id: "u1",
+        email: "bob@acme.com",
+        display_name: "Bob Dev",
+        role: "member",
+        approval_status: "approved",
+        company_id: "c1",
+        department_id: "d1",
+        department_name: "Engineering",
+        created_at: "2026-08-24T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const users = await listTeamUsers();
+
+    expect(users).toEqual([
+      {
+        id: "u1",
+        email: "bob@acme.com",
+        displayName: "Bob Dev",
+        role: "member",
+        approvalStatus: "approved",
+        companyId: "c1",
+        departmentId: "d1",
+        departmentName: "Engineering",
+        createdAt: "2026-08-24T00:00:00Z",
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/users");
+  });
+});
+
+describe("createUser", () => {
+  it("POSTs to /users with correct body and returns created member", async () => {
+    const mockUser = {
+      id: "u2",
+      email: "charlie@acme.com",
+      display_name: "Charlie",
+      role: "member",
+      approval_status: "approved",
+      company_id: "c1",
+      department_id: "d1",
+      department_name: "Engineering",
+      created_at: "2026-08-24T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createUser({
+      email: "charlie@acme.com",
+      password: "password123",
+      displayName: "Charlie",
+      departmentId: "d1",
+    });
+
+    expect(result.email).toBe("charlie@acme.com");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/users");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({
+      email: "charlie@acme.com",
+      password: "password123",
+      display_name: "Charlie",
+      department_id: "d1",
+      role: "member",
+    });
+  });
+});
+
+describe("updateUser", () => {
+  it("PATCHes /users/{id} with payload", async () => {
+    const mockUser = {
+      id: "u2",
+      email: "charlie@acme.com",
+      display_name: "Charlie Senior",
+      role: "admin",
+      approval_status: "approved",
+      company_id: "c1",
+      department_id: "d2",
+      department_name: "Product",
+      created_at: "2026-08-24T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateUser("u2", {
+      displayName: "Charlie Senior",
+      departmentId: "d2",
+      role: "admin",
+    });
+
+    expect(result.displayName).toBe("Charlie Senior");
+    expect(result.role).toBe("admin");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/users/u2");
+    expect(options.method).toBe("PATCH");
+  });
+});
+
+describe("deleteUser", () => {
+  it("DELETEs /users/{id}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteUser("u2");
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/users/u2");
+    expect(options.method).toBe("DELETE");
+  });
+});
+
+describe("listDepartments", () => {
+  it("GETs /departments and maps departments", async () => {
+    const mockData = [
+      {
+        id: "d1",
+        name: "Engineering",
+        company_id: "c1",
+        created_at: "2026-08-24T00:00:00Z",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const depts = await listDepartments();
+
+    expect(depts).toEqual([
+      {
+        id: "d1",
+        name: "Engineering",
+        companyId: "c1",
+        createdAt: "2026-08-24T00:00:00Z",
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/departments");
+  });
+});
+
+describe("createDepartment", () => {
+  it("POSTs to /departments with name", async () => {
+    const mockDept = {
+      id: "d2",
+      name: "Marketing",
+      company_id: "c1",
+      created_at: "2026-08-24T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockDept), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createDepartment("Marketing");
+
+    expect(result).toEqual({
+      id: "d2",
+      name: "Marketing",
+      companyId: "c1",
+      createdAt: "2026-08-24T00:00:00Z",
+    });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/departments");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({ name: "Marketing" });
+  });
+});
+
+describe("deleteDepartment", () => {
+  it("DELETEs /departments/{id}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteDepartment("d1");
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/departments/d1");
+    expect(options.method).toBe("DELETE");
   });
 });

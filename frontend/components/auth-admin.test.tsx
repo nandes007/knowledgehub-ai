@@ -50,6 +50,32 @@ vi.mock("@/lib/api", () => ({
     documentsPerUser: [{ email: "user@example.com", count: 5 }],
     costPerDay: [{ date: "2026-08-01", costUsd: 0.5 }],
   }),
+  listPendingUsers: vi.fn().mockResolvedValue([
+    {
+      id: "u1",
+      email: "pending@acme.com",
+      displayName: "Pending Admin",
+      role: "admin",
+      approvalStatus: "pending",
+      companyId: "c1",
+      companyName: "Acme Corp",
+      departmentId: null,
+      createdAt: "2026-08-25T00:00:00Z",
+    },
+  ]),
+  approveUser: vi.fn().mockResolvedValue({}),
+  rejectUser: vi.fn().mockResolvedValue({}),
+  listCompanies: vi.fn().mockResolvedValue([
+    {
+      id: "c1",
+      name: "Acme Corp",
+      status: "active",
+      createdAt: "2026-08-25T00:00:00Z",
+      updatedAt: "2026-08-25T00:00:00Z",
+    },
+  ]),
+  suspendCompany: vi.fn().mockResolvedValue({}),
+  activateCompany: vi.fn().mockResolvedValue({}),
 }));
 
 describe("Auth and Admin Pages", () => {
@@ -153,7 +179,6 @@ describe("Auth and Admin Pages", () => {
       expect(html).toContain("Stats");
       expect(html).toContain("Team");
       expect(html).toContain("Platform administration and organization management.");
-      expect(html).toContain("Pending company registrations will appear here.");
     });
   });
 });

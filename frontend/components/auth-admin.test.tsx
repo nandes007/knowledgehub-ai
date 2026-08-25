@@ -76,6 +76,29 @@ vi.mock("@/lib/api", () => ({
   ]),
   suspendCompany: vi.fn().mockResolvedValue({}),
   activateCompany: vi.fn().mockResolvedValue({}),
+  listDepartments: vi.fn().mockResolvedValue([
+    {
+      id: "d1",
+      name: "Engineering",
+      companyId: "c1",
+      createdAt: "2026-08-25T00:00:00Z",
+    },
+  ]),
+  createDepartment: vi.fn().mockResolvedValue({}),
+  deleteDepartment: vi.fn().mockResolvedValue({}),
+  listTeamUsers: vi.fn().mockResolvedValue([
+    {
+      id: "u1",
+      email: "engineer@acme.com",
+      displayName: "Alice Engineer",
+      role: "member",
+      approvalStatus: "approved",
+      companyId: "c1",
+      departmentId: "d1",
+      departmentName: "Engineering",
+      createdAt: "2026-08-25T00:00:00Z",
+    },
+  ]),
 }));
 
 describe("Auth and Admin Pages", () => {

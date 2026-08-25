@@ -3,77 +3,166 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ADMIN_REQUIRED, getStats, type Stats } from "@/lib/api";
+import { useAuth } from "@/components/AuthProvider";
 import { BarChart, Card } from "@/components/ui";
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
+type TabKey = "pending" | "companies" | "stats" | "team";
+
+interface TabItem {
+  id: TabKey;
+  label: string;
+}
+
 export default function AdminPage() {
   const router = useRouter();
+  const { isSuperAdmin, isAdmin, isReady } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const availableTabs: TabItem[] = isSuperAdmin
+    ? [
+        { id: "pending", label: "Pending Approvals" },
+        { id: "companies", label: "Companies" },
+        { id: "stats", label: "Stats" },
+        { id: "team", label: "Team" },
+      ]
+    : [
+        { id: "stats", label: "Stats" },
+        { id: "team", label: "Team" },
+      ];
+
+  const defaultTab: TabKey = isSuperAdmin ? "pending" : "stats";
+  const [activeTab, setActiveTab] = useState<TabKey>(defaultTab);
+
+  // Keep activeTab aligned if role loads after initial render
   useEffect(() => {
-    getStats()
-      .then(setStats)
-      .catch((err) => {
-        // Members are bounced by the API's 403, not by a client-side role check.
-        if (err instanceof Error && err.message === ADMIN_REQUIRED) {
-          router.replace("/");
-          return;
-        }
-        setLoadError(err instanceof Error ? err.message : "Couldn't load stats.");
-      });
-  }, [router]);
+    if (isSuperAdmin && activeTab === "stats" && !availableTabs.some((t) => t.id === activeTab)) {
+      setActiveTab("pending");
+    }
+  }, [isSuperAdmin, activeTab, availableTabs]);
+
+  useEffect(() => {
+    if (isReady && !isAdmin) {
+      router.replace("/");
+      return;
+    }
+
+    if (activeTab === "stats") {
+      getStats()
+        .then(setStats)
+        .catch((err) => {
+          // Members are bounced by the API's 403, not by a client-side role check.
+          if (err instanceof Error && err.message === ADMIN_REQUIRED) {
+            router.replace("/");
+            return;
+          }
+          setLoadError(err instanceof Error ? err.message : "Couldn't load stats.");
+        });
+    }
+  }, [router, isAdmin, isReady, activeTab]);
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-y-auto bg-surface-primary px-4 pb-6 pt-16 md:px-6 md:pt-6">
       <div>
         <h1 className="text-lg font-semibold text-text-primary">Admin</h1>
-        <p className="mt-1 text-sm text-text-secondary">Usage across the vault, last 30 days.</p>
+        <p className="mt-1 text-sm text-text-secondary">
+          {isSuperAdmin
+            ? "Platform administration and organization management."
+            : "Usage across the vault, last 30 days."}
+        </p>
       </div>
 
-      {loadError && <p className="text-sm text-status-void">{loadError}</p>}
+      {/* Horizontal Tabs Bar */}
+      <div className="flex border-b border-border">
+        {availableTabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`relative px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none ${
+                isActive
+                  ? "font-semibold text-gold"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              {tab.label}
+              {isActive && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold" />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-      {!stats && !loadError && <p className="text-sm text-text-secondary">Loading stats…</p>}
+      {/* Tab Contents */}
+      {activeTab === "stats" && (
+        <div className="flex flex-col gap-6">
+          {loadError && <p className="text-sm text-status-void">{loadError}</p>}
 
-      {stats && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Card className="p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-secondary">Documents filed</p>
-              <p className="mt-1 text-2xl font-semibold text-text-primary">{stats.documentCount}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-secondary">Estimated cost</p>
-              <p className="mt-1 text-2xl font-semibold text-text-primary">
-                {formatUsd(stats.estimatedCostUsd)}
-              </p>
-            </Card>
-          </div>
+          {!stats && !loadError && <p className="text-sm text-text-secondary">Loading stats…</p>}
 
-          <Card className="p-4">
-            <h2 className="mb-3 text-sm font-semibold text-text-primary">Messages per day</h2>
-            <BarChart data={stats.messagesPerDay.map(({ date, count }) => ({ label: date, value: count }))} />
-          </Card>
+          {stats && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Card className="p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-secondary">Documents filed</p>
+                  <p className="mt-1 text-2xl font-semibold text-text-primary">{stats.documentCount}</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-secondary">Estimated cost</p>
+                  <p className="mt-1 text-2xl font-semibold text-text-primary">
+                    {formatUsd(stats.estimatedCostUsd)}
+                  </p>
+                </Card>
+              </div>
 
-          <Card className="p-4">
-            <h2 className="mb-3 text-sm font-semibold text-text-primary">Documents per user</h2>
-            <BarChart
-              data={stats.documentsPerUser.map(({ email, count }) => ({ label: email, value: count }))}
-              emptyMessage="Nobody has uploaded anything yet."
-            />
-          </Card>
+              <Card className="p-4">
+                <h2 className="mb-3 text-sm font-semibold text-text-primary">Messages per day</h2>
+                <BarChart data={stats.messagesPerDay.map(({ date, count }) => ({ label: date, value: count }))} />
+              </Card>
 
-          <Card className="p-4">
-            <h2 className="mb-3 text-sm font-semibold text-text-primary">Cost over time</h2>
-            <BarChart
-              data={stats.costPerDay.map(({ date, costUsd }) => ({ label: date, value: costUsd }))}
-              formatValue={formatUsd}
-            />
-          </Card>
-        </>
+              <Card className="p-4">
+                <h2 className="mb-3 text-sm font-semibold text-text-primary">Documents per user</h2>
+                <BarChart
+                  data={stats.documentsPerUser.map(({ email, count }) => ({ label: email, value: count }))}
+                  emptyMessage="Nobody has uploaded anything yet."
+                />
+              </Card>
+
+              <Card className="p-4">
+                <h2 className="mb-3 text-sm font-semibold text-text-primary">Cost over time</h2>
+                <BarChart
+                  data={stats.costPerDay.map(({ date, costUsd }) => ({ label: date, value: costUsd }))}
+                  formatValue={formatUsd}
+                />
+              </Card>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === "pending" && (
+        <Card className="p-8 text-center text-text-secondary">
+          <p className="text-sm">Pending company registrations will appear here.</p>
+        </Card>
+      )}
+
+      {activeTab === "companies" && (
+        <Card className="p-8 text-center text-text-secondary">
+          <p className="text-sm">Company management will appear here.</p>
+        </Card>
+      )}
+
+      {activeTab === "team" && (
+        <Card className="p-8 text-center text-text-secondary">
+          <p className="text-sm">Team member and department management will appear here.</p>
+        </Card>
       )}
     </div>
   );

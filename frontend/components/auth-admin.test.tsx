@@ -15,15 +15,29 @@ vi.mock("next/navigation", () => ({
 }));
 
 // Mock AuthProvider
+const mockUseAuth = vi.fn(() => ({
+  token: null,
+  isReady: true,
+  isAdmin: true,
+  isSuperAdmin: false,
+  isMember: false,
+  user: {
+    email: "admin@acme.com",
+    role: "admin",
+    displayName: "Admin",
+    companyName: "Acme",
+    approvalStatus: "approved",
+    companyId: "c1",
+    departmentId: null,
+    departmentName: null,
+  },
+  login: vi.fn(),
+  register: vi.fn(),
+  logout: vi.fn(),
+}));
+
 vi.mock("@/components/AuthProvider", () => ({
-  useAuth: () => ({
-    token: null,
-    isReady: true,
-    isAdmin: true,
-    login: vi.fn(),
-    register: vi.fn(),
-    logout: vi.fn(),
-  }),
+  useAuth: () => mockUseAuth(),
 }));
 
 // Mock API
@@ -79,11 +93,67 @@ describe("Auth and Admin Pages", () => {
   });
 
   describe("AdminPage", () => {
-    it("renders admin page heading and layout", () => {
+    it("renders company admin tabs (Stats, Team) when logged in as company admin", () => {
+      mockUseAuth.mockReturnValueOnce({
+        token: "test-token",
+        isReady: true,
+        isAdmin: true,
+        isSuperAdmin: false,
+        isMember: false,
+        user: {
+          email: "admin@acme.com",
+          role: "admin",
+          displayName: "Admin",
+          companyName: "Acme",
+          approvalStatus: "approved",
+          companyId: "c1",
+          departmentId: null,
+          departmentName: null,
+        },
+        login: vi.fn(),
+        register: vi.fn(),
+        logout: vi.fn(),
+      });
+
       const html = renderToString(createElement(AdminPage));
       expect(html).toContain("Admin");
+      expect(html).toContain("Stats");
+      expect(html).toContain("Team");
+      expect(html).not.toContain("Pending Approvals");
+      expect(html).not.toContain("Companies");
       expect(html).toContain("Usage across the vault, last 30 days.");
-      expect(html).toContain("bg-surface-primary");
+    });
+
+    it("renders all 4 tabs for superadmin with Pending Approvals active", () => {
+      mockUseAuth.mockReturnValueOnce({
+        token: "super-token",
+        isReady: true,
+        isAdmin: true,
+        isSuperAdmin: true,
+        isMember: false,
+        user: {
+          email: "super@platform.com",
+          role: "superadmin",
+          displayName: "Super Admin",
+          companyName: null,
+          approvalStatus: "approved",
+          companyId: null,
+          departmentId: null,
+          departmentName: null,
+        },
+        login: vi.fn(),
+        register: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      const html = renderToString(createElement(AdminPage));
+      expect(html).toContain("Admin");
+      expect(html).toContain("Pending Approvals");
+      expect(html).toContain("Companies");
+      expect(html).toContain("Stats");
+      expect(html).toContain("Team");
+      expect(html).toContain("Platform administration and organization management.");
+      expect(html).toContain("Pending company registrations will appear here.");
     });
   });
 });

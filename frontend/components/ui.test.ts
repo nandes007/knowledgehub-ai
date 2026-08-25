@@ -8,6 +8,7 @@ import {
   StatusPill,
   Wordmark,
   BarChart,
+  Toast,
 } from "./ui";
 
 describe("UI primitives", () => {
@@ -131,6 +132,32 @@ describe("UI primitives", () => {
       const el = BarChart({ data });
       expect(el.type).toBe("ul");
       expect(el.props.children).toHaveLength(2);
+    });
+  });
+
+  describe("Toast", () => {
+    it("returns null when message is null", () => {
+      const el = Toast({ message: null });
+      expect(el).toBeNull();
+    });
+
+    it("renders success toast by default", () => {
+      const el = Toast({ message: "Action succeeded" });
+      expect(el).not.toBeNull();
+      expect(el?.props.className).toContain("text-status-ready");
+      expect(el?.props.role).toBe("status");
+    });
+
+    it("renders error toast variant", () => {
+      const el = Toast({ message: "Action failed", variant: "error" });
+      expect(el).not.toBeNull();
+      expect(el?.props.className).toContain("text-status-void");
+    });
+
+    it("renders dismiss button when onDismiss is provided", () => {
+      const onDismiss = () => {};
+      const el = Toast({ message: "Notice", onDismiss });
+      expect(el).not.toBeNull();
     });
   });
 });

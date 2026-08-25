@@ -116,3 +116,46 @@ export function Wordmark({ collapsed = false, className = "" }: { collapsed?: bo
     </span>
   );
 }
+
+export type ToastVariant = "success" | "error" | "info";
+
+const TOAST_STYLES: Record<ToastVariant, string> = {
+  success: "border-status-ready/30 bg-surface-overlay text-status-ready",
+  error: "border-status-void/30 bg-surface-overlay text-status-void",
+  info: "border-gold/30 bg-surface-overlay text-gold",
+};
+
+export function Toast({
+  message,
+  variant = "success",
+  onDismiss,
+  duration = 3000,
+}: {
+  message: string | null;
+  variant?: ToastVariant;
+  onDismiss?: () => void;
+  duration?: number;
+}) {
+  if (!message) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-md transition-all duration-200 ${TOAST_STYLES[variant]}`}
+    >
+      <span>{message}</span>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="ml-2 text-text-tertiary hover:text-text-primary focus:outline-none"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+

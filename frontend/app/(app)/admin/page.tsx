@@ -7,7 +7,9 @@ import {
   activateCompany,
   approveUser,
   createDepartment,
+  createUser,
   deleteDepartment,
+  deleteUser,
   getStats,
   listCompanies,
   listDepartments,
@@ -15,6 +17,7 @@ import {
   listTeamUsers,
   rejectUser,
   suspendCompany,
+  updateUser,
   type Department,
   type Stats,
   type SuperadminCompany,
@@ -22,7 +25,7 @@ import {
   type TeamUser,
 } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
-import { BarChart, Button, Card, Input, Toast, type ToastVariant } from "@/components/ui";
+import { BarChart, Button, Card, Input, Label, Toast, type ToastVariant } from "@/components/ui";
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
@@ -93,6 +96,17 @@ export default function AdminPage() {
   const [teamUsers, setTeamUsers] = useState<TeamUser[] | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
+
+  // Add / Edit Employee Modal State
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
+  const [userFormName, setUserFormName] = useState("");
+  const [userFormEmail, setUserFormEmail] = useState("");
+  const [userFormPassword, setUserFormPassword] = useState("");
+  const [userFormDeptId, setUserFormDeptId] = useState("");
+  const [userFormRole, setUserFormRole] = useState<"member" | "admin">("member");
+  const [userFormError, setUserFormError] = useState<string | null>(null);
+  const [userFormSubmitting, setUserFormSubmitting] = useState(false);
 
   // Keep activeTab aligned if role loads after initial render
   useEffect(() => {
@@ -285,6 +299,153 @@ export default function AdminPage() {
     } catch (err) {
       setDepartments(previous);
       showToast(err instanceof Error ? err.message : `Failed to delete department "${dept.name}".`, "error");
+    }
+  };
+
+  // Company Admin Actions: Team User Modal & CRUD
+  const openAddUserModal = () => {
+    setEditingUser(null);
+    setUserFormName("");
+    setUserFormEmail("");
+    setUserFormPassword("");
+    setUserFormDeptId(departments && departments.length > 0 ? departments[0].id : "");
+    setUserFormRole("member");
+    setUserFormError(null);
+    setIsUserModalOpen(true);
+  };
+
+  const openEditUserModal = (user: TeamUser) => {
+    setEditingUser(user);
+    setUserFormName(user.displayName ?? "");
+    setUserFormEmail(user.email);
+    setUserFormPassword("");
+    setUserFormDeptId(user.departmentId ?? (departments && departments.length > 0 ? departments[0].id : ""));
+    setUserFormRole(user.role === "admin" ? "admin" : "member");
+    setUserFormError(null);
+    setIsUserModalOpen(true);
+  };
+
+  const closeUserModal = () => {
+    setIsUserModalOpen(false);
+    setEditingUser(null);
+    setUserFormError(null);
+  };
+
+  const handleUserFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserFormError(null);
+
+    const name = userFormName.trim();
+    const email = userFormEmail.trim();
+
+    if (!name) {
+      setUserFormError("Name is required.");
+      return;
+    }
+
+    if (!userFormDeptId) {
+      setUserFormError("Please select a department (create one first if none exist).");
+      return;
+    }
+
+    if (!editingUser) {
+      if (!email) {
+        setUserFormError("Email is required.");
+        return;
+      }
+      if (!userFormPassword || userFormPassword.length < 8) {
+        setUserFormError("Password must be at least 8 characters.");
+        return;
+      }
+    }
+
+    const deptObj = departments?.find((d) => d.id === userFormDeptId);
+    setUserFormSubmitting(true);
+
+    if (!editingUser) {
+      // Add mode (Optimistic)
+      const tempId = `temp-${Date.now()}`;
+      const tempUser: TeamUser = {
+        id: tempId,
+        email,
+        displayName: name,
+        role: userFormRole,
+        approvalStatus: "approved",
+        companyId: "temp",
+        departmentId: userFormDeptId,
+        departmentName: deptObj?.name ?? null,
+        createdAt: new Date().toISOString(),
+      };
+
+      const previous = teamUsers ?? [];
+      setTeamUsers([tempUser, ...previous]);
+      closeUserModal();
+
+      try {
+        const created = await createUser({
+          email,
+          password: userFormPassword,
+          displayName: name,
+          departmentId: userFormDeptId,
+          role: userFormRole,
+        });
+        setTeamUsers((prev) => (prev ? prev.map((u) => (u.id === tempId ? created : u)) : [created]));
+        showToast(`Employee "${name}" added.`, "success");
+      } catch (err) {
+        setTeamUsers(previous);
+        showToast(err instanceof Error ? err.message : `Failed to add employee "${name}".`, "error");
+      } finally {
+        setUserFormSubmitting(false);
+      }
+    } else {
+      // Edit mode (Optimistic)
+      const previous = teamUsers ?? [];
+      const updatedList = previous.map((u) =>
+        u.id === editingUser.id
+          ? {
+              ...u,
+              displayName: name,
+              departmentId: userFormDeptId,
+              departmentName: deptObj?.name ?? null,
+              role: userFormRole,
+            }
+          : u,
+      );
+
+      setTeamUsers(updatedList);
+      closeUserModal();
+
+      try {
+        const updated = await updateUser(editingUser.id, {
+          displayName: name,
+          departmentId: userFormDeptId,
+          role: userFormRole,
+        });
+        setTeamUsers((prev) => (prev ? prev.map((u) => (u.id === editingUser.id ? updated : u)) : [updated]));
+        showToast(`Employee "${name}" updated.`, "success");
+      } catch (err) {
+        setTeamUsers(previous);
+        showToast(err instanceof Error ? err.message : `Failed to update employee "${name}".`, "error");
+      } finally {
+        setUserFormSubmitting(false);
+      }
+    }
+  };
+
+  const handleDeleteUser = async (user: TeamUser) => {
+    if (!teamUsers) return;
+    const previous = [...teamUsers];
+    setTeamUsers(teamUsers.filter((u) => u.id !== user.id));
+
+    try {
+      await deleteUser(user.id);
+      showToast(`Employee "${user.displayName ?? user.email}" removed.`, "success");
+    } catch (err) {
+      setTeamUsers(previous);
+      showToast(
+        err instanceof Error ? err.message : `Failed to delete employee "${user.displayName ?? user.email}".`,
+        "error",
+      );
     }
   };
 
@@ -600,8 +761,7 @@ export default function AdminPage() {
               <Button
                 variant="primary"
                 className="h-8 px-3 text-xs"
-                disabled
-                title="Add Employee (available in next step)"
+                onClick={openAddUserModal}
               >
                 + Add Employee
               </Button>
@@ -661,14 +821,14 @@ export default function AdminPage() {
                             <Button
                               variant="ghost"
                               className="h-8 px-2 text-xs"
-                              disabled
+                              onClick={() => openEditUserModal(member)}
                             >
                               Edit
                             </Button>
                             <Button
                               variant="danger"
                               className="h-8 px-2 text-xs"
-                              disabled
+                              onClick={() => handleDeleteUser(member)}
                             >
                               Delete
                             </Button>
@@ -681,6 +841,140 @@ export default function AdminPage() {
               </Card>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Add / Edit Employee Modal */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-md p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-text-primary">
+                {editingUser ? "Edit Employee" : "Add Employee"}
+              </h2>
+              <button
+                type="button"
+                onClick={closeUserModal}
+                className="text-text-tertiary hover:text-text-primary focus:outline-none"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {userFormError && (
+              <p className="mb-4 rounded-lg border border-status-void/30 bg-surface-overlay p-2 text-xs text-status-void">
+                {userFormError}
+              </p>
+            )}
+
+            <form onSubmit={handleUserFormSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="user-name">Full Name</Label>
+                <Input
+                  id="user-name"
+                  type="text"
+                  placeholder="e.g. Alice Smith"
+                  value={userFormName}
+                  onChange={(e) => setUserFormName(e.target.value)}
+                  className="mt-1"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="user-email">Email</Label>
+                <Input
+                  id="user-email"
+                  type="email"
+                  placeholder="e.g. alice@company.com"
+                  value={userFormEmail}
+                  onChange={(e) => setUserFormEmail(e.target.value)}
+                  disabled={!!editingUser}
+                  className="mt-1"
+                  required={!editingUser}
+                />
+              </div>
+
+              {!editingUser && (
+                <div>
+                  <Label htmlFor="user-password">Password</Label>
+                  <Input
+                    id="user-password"
+                    type="password"
+                    placeholder="Min. 8 characters"
+                    value={userFormPassword}
+                    onChange={(e) => setUserFormPassword(e.target.value)}
+                    minLength={8}
+                    className="mt-1"
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor="user-department">Department</Label>
+                <select
+                  id="user-department"
+                  value={userFormDeptId}
+                  onChange={(e) => setUserFormDeptId(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-sm text-text-primary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+                  required
+                >
+                  {departments && departments.length > 0 ? (
+                    departments.map((dept) => (
+                      <option key={dept.id} value={dept.id} className="bg-surface-raised">
+                        {dept.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled className="bg-surface-raised">
+                      No departments available
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="user-role">Role</Label>
+                <select
+                  id="user-role"
+                  value={userFormRole}
+                  onChange={(e) => setUserFormRole(e.target.value as "member" | "admin")}
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-sm text-text-primary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+                >
+                  <option value="member" className="bg-surface-raised">
+                    Member
+                  </option>
+                  <option value="admin" className="bg-surface-raised">
+                    Admin
+                  </option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={closeUserModal}
+                  disabled={userFormSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={userFormSubmitting}
+                >
+                  {userFormSubmitting
+                    ? "Saving…"
+                    : editingUser
+                      ? "Save Changes"
+                      : "Add Employee"}
+                </Button>
+              </div>
+            </form>
+          </Card>
         </div>
       )}
 

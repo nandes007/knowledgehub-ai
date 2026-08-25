@@ -99,6 +99,9 @@ vi.mock("@/lib/api", () => ({
       createdAt: "2026-08-25T00:00:00Z",
     },
   ]),
+  createUser: vi.fn().mockResolvedValue({}),
+  updateUser: vi.fn().mockResolvedValue({}),
+  deleteUser: vi.fn().mockResolvedValue({}),
 }));
 
 describe("Auth and Admin Pages", () => {

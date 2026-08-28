@@ -9,9 +9,11 @@ import {
   createDepartment,
   createUser,
   deleteDepartment,
+  deleteSuperadminUser,
   deleteUser,
   getStats,
   listCompanies,
+  listCompanyAdmins,
   listDepartments,
   listPendingUsers,
   listTeamUsers,
@@ -31,7 +33,7 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
-type TabKey = "pending" | "companies" | "stats" | "team";
+type TabKey = "pending" | "companies" | "admins" | "stats" | "team";
 
 interface TabItem {
   id: TabKey;
@@ -47,12 +49,12 @@ export default function AdminPage() {
     ? [
         { id: "pending", label: "Pending Approvals" },
         { id: "companies", label: "Companies" },
+        { id: "admins", label: "Company Admins" },
         { id: "stats", label: "Stats" },
-        { id: "team", label: "Team" },
       ]
     : [
         { id: "stats", label: "Stats" },
-        { id: "team", label: "Team" },
+        { id: "team", label: "Employees" },
       ];
 
   const defaultTab: TabKey = isSuperAdmin ? "pending" : "stats";
@@ -86,7 +88,12 @@ export default function AdminPage() {
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companiesError, setCompaniesError] = useState<string | null>(null);
 
-  // Team & Departments tab data
+  // Company Admins tab data (Superadmin)
+  const [companyAdmins, setCompanyAdmins] = useState<SuperadminUser[] | null>(null);
+  const [adminsLoading, setAdminsLoading] = useState(false);
+  const [adminsError, setAdminsError] = useState<string | null>(null);
+
+  // Employees & Departments tab data (Company Admin)
   const [departments, setDepartments] = useState<Department[] | null>(null);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [departmentsError, setDepartmentsError] = useState<string | null>(null);
@@ -110,10 +117,12 @@ export default function AdminPage() {
 
   // Keep activeTab aligned if role loads after initial render
   useEffect(() => {
-    if (isSuperAdmin && activeTab === "stats" && !availableTabs.some((t) => t.id === activeTab)) {
+    if (isSuperAdmin && activeTab === "team") {
       setActiveTab("pending");
+    } else if (!isSuperAdmin && (activeTab === "pending" || activeTab === "companies" || activeTab === "admins")) {
+      setActiveTab("stats");
     }
-  }, [isSuperAdmin, activeTab, availableTabs]);
+  }, [isSuperAdmin, activeTab]);
 
   // Auth gate check
   useEffect(() => {
@@ -158,7 +167,18 @@ export default function AdminPage() {
           setCompaniesError(err instanceof Error ? err.message : "Failed to load companies.");
         })
         .finally(() => setCompaniesLoading(false));
-    } else if (activeTab === "team") {
+    } else if (activeTab === "admins" && isSuperAdmin && !companyAdmins) {
+      setAdminsLoading(true);
+      listCompanyAdmins()
+        .then((data) => {
+          setCompanyAdmins(data);
+          setAdminsError(null);
+        })
+        .catch((err) => {
+          setAdminsError(err instanceof Error ? err.message : "Failed to load company admins.");
+        })
+        .finally(() => setAdminsLoading(false));
+    } else if (activeTab === "team" && !isSuperAdmin) {
       if (!departments) {
         setDepartmentsLoading(true);
         listDepartments()
@@ -179,12 +199,12 @@ export default function AdminPage() {
             setTeamError(null);
           })
           .catch((err) => {
-            setTeamError(err instanceof Error ? err.message : "Failed to load team members.");
+            setTeamError(err instanceof Error ? err.message : "Failed to load employees.");
           })
           .finally(() => setTeamLoading(false));
       }
     }
-  }, [activeTab, isAdmin, isSuperAdmin, router, stats, pendingUsers, companies, departments, teamUsers]);
+  }, [activeTab, isAdmin, isSuperAdmin, router, stats, pendingUsers, companies, companyAdmins, departments, teamUsers]);
 
   // Superadmin Actions: Pending Approvals
   const handleApprove = async (userId: string) => {
@@ -255,6 +275,29 @@ export default function AdminPage() {
       setCompanies(previous);
       showToast(
         err instanceof Error ? err.message : `Failed to update status for "${company.name}".`,
+        "error",
+      );
+    }
+  };
+
+  // Superadmin Actions: Company Admins
+  const handleDeleteCompanyAdmin = async (adminUser: SuperadminUser) => {
+    if (!companyAdmins) return;
+    const previous = [...companyAdmins];
+    setCompanyAdmins(companyAdmins.filter((u) => u.id !== adminUser.id));
+
+    try {
+      await deleteSuperadminUser(adminUser.id);
+      showToast(
+        `Company admin "${adminUser.displayName ?? adminUser.email}" removed.`,
+        "success",
+      );
+    } catch (err) {
+      setCompanyAdmins(previous);
+      showToast(
+        err instanceof Error
+          ? err.message
+          : `Failed to delete company admin "${adminUser.displayName ?? adminUser.email}".`,
         "error",
       );
     }
@@ -369,7 +412,7 @@ export default function AdminPage() {
         id: tempId,
         email,
         displayName: name,
-        role: userFormRole,
+        role: "member",
         approvalStatus: "approved",
         companyId: "temp",
         departmentId: userFormDeptId,
@@ -387,7 +430,7 @@ export default function AdminPage() {
           password: userFormPassword,
           displayName: name,
           departmentId: userFormDeptId,
-          role: userFormRole,
+          role: "member",
         });
         setTeamUsers((prev) => (prev ? prev.map((u) => (u.id === tempId ? created : u)) : [created]));
         showToast(`Employee "${name}" added.`, "success");
@@ -407,7 +450,6 @@ export default function AdminPage() {
               displayName: name,
               departmentId: userFormDeptId,
               departmentName: deptObj?.name ?? null,
-              role: userFormRole,
             }
           : u,
       );
@@ -419,7 +461,7 @@ export default function AdminPage() {
         const updated = await updateUser(editingUser.id, {
           displayName: name,
           departmentId: userFormDeptId,
-          role: userFormRole,
+          role: "member",
         });
         setTeamUsers((prev) => (prev ? prev.map((u) => (u.id === editingUser.id ? updated : u)) : [updated]));
         showToast(`Employee "${name}" updated.`, "success");
@@ -448,6 +490,8 @@ export default function AdminPage() {
       );
     }
   };
+
+  const employees = (teamUsers ?? []).filter((u) => u.role === "member");
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-y-auto bg-surface-primary px-4 pb-6 pt-16 md:px-6 md:pt-6">
@@ -659,8 +703,98 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Tab Contents: Team (Company Admin) */}
-      {activeTab === "team" && (
+      {/* Tab Contents: Company Admins (Superadmin) */}
+      {activeTab === "admins" && isSuperAdmin && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">Company Administrators</h2>
+              <p className="text-xs text-text-secondary">Manage company admin accounts across the platform.</p>
+            </div>
+          </div>
+
+          {adminsError && <p className="text-sm text-status-void">{adminsError}</p>}
+          {adminsLoading && !companyAdmins && (
+            <p className="text-sm text-text-secondary">Loading company admins…</p>
+          )}
+
+          {companyAdmins && companyAdmins.length === 0 && (
+            <Card className="p-8 text-center text-text-secondary">
+              <p className="text-sm">No company administrators found.</p>
+            </Card>
+          )}
+
+          {companyAdmins && companyAdmins.length > 0 && (
+            <Card className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-border bg-surface-raised text-xs font-medium uppercase tracking-[0.06em] text-text-secondary">
+                  <tr>
+                    <th className="px-4 py-3">Company Name</th>
+                    <th className="px-4 py-3">Admin Name</th>
+                    <th className="px-4 py-3">Email</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Registered Date</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {companyAdmins.map((adminUser) => {
+                    const isSelf = adminUser.id === authUser?.id || adminUser.email === authUser?.email;
+                    return (
+                      <tr key={adminUser.id} className="transition-colors hover:bg-surface-raised/50">
+                        <td className="px-4 py-3 font-medium text-text-primary">
+                          {adminUser.companyName ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-text-primary">
+                          <span className="inline-flex items-center gap-1.5">
+                            {adminUser.displayName ?? "—"}
+                            {isSelf && (
+                              <span className="rounded bg-surface-overlay px-1.5 py-0.5 text-[10px] font-normal text-text-secondary">
+                                You
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-text-secondary">{adminUser.email}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] ${
+                              adminUser.approvalStatus === "approved"
+                                ? "bg-status-ready-bg text-status-ready"
+                                : adminUser.approvalStatus === "pending"
+                                  ? "bg-gold-muted text-gold"
+                                  : "bg-status-void-bg text-status-void"
+                            }`}
+                          >
+                            {adminUser.approvalStatus}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-text-secondary">
+                          {new Date(adminUser.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="space-x-2 px-4 py-3 text-right">
+                          {!isSelf && (
+                            <Button
+                              variant="danger"
+                              className="h-8 px-3 text-xs"
+                              onClick={() => handleDeleteCompanyAdmin(adminUser)}
+                            >
+                              Delete
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Tab Contents: Employees (Company Admin) */}
+      {activeTab === "team" && !isSuperAdmin && (
         <div className="flex flex-col gap-6">
           {/* Departments Collapsible Section */}
           <Card className="p-4">
@@ -751,12 +885,12 @@ export default function AdminPage() {
             )}
           </Card>
 
-          {/* Team Members Table Section */}
+          {/* Employees Table Section */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-text-primary">Team Members</h2>
-                <p className="text-xs text-text-secondary">Manage employees and company administrators.</p>
+                <h2 className="text-sm font-semibold text-text-primary">Employees</h2>
+                <p className="text-xs text-text-secondary">Manage employee accounts in your organization.</p>
               </div>
               <Button
                 variant="primary"
@@ -769,93 +903,58 @@ export default function AdminPage() {
 
             {teamError && <p className="text-sm text-status-void">{teamError}</p>}
             {teamLoading && !teamUsers && (
-              <p className="text-sm text-text-secondary">Loading team members…</p>
+              <p className="text-sm text-text-secondary">Loading employees…</p>
             )}
 
-            {teamUsers && teamUsers.length === 0 && (
+            {employees.length === 0 && !teamLoading && (
               <Card className="p-8 text-center text-text-secondary">
-                <p className="text-sm">No team members found.</p>
+                <p className="text-sm">No employees found.</p>
               </Card>
             )}
 
-            {teamUsers && teamUsers.length > 0 && (
+            {employees.length > 0 && (
               <Card className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-border bg-surface-raised text-xs font-medium uppercase tracking-[0.06em] text-text-secondary">
                     <tr>
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Role</th>
                       <th className="px-4 py-3">Department</th>
                       <th className="px-4 py-3">Created Date</th>
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {teamUsers.map((member) => {
-                      const isSelf = member.id === authUser?.id || member.email === authUser?.email;
-                      const isAdminRole = member.role === "admin" || member.role === "superadmin";
-                      const canDelete = isSuperAdmin ? !isSelf : !isSelf && !isAdminRole;
-                      const canEdit = isSuperAdmin ? true : !isAdminRole;
-
-                      return (
-                        <tr key={member.id} className="transition-colors hover:bg-surface-raised/50">
-                          <td className="px-4 py-3 font-medium text-text-primary">
-                            <span className="inline-flex items-center gap-1.5">
-                              {member.displayName ?? "—"}
-                              {isSelf && (
-                                <span className="rounded bg-surface-overlay px-1.5 py-0.5 text-[10px] font-normal text-text-secondary">
-                                  You
-                                </span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-xs text-text-secondary">{member.email}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] ${
-                                isAdminRole
-                                  ? "bg-gold-muted text-gold"
-                                  : "border border-border bg-surface-raised text-text-secondary"
-                              }`}
-                            >
-                              {member.role}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-text-secondary">
-                            {member.departmentName ?? "—"}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-text-secondary">
-                            {new Date(member.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="space-x-2 px-4 py-3 text-right">
-                            {canEdit && (
-                              <Button
-                                variant="ghost"
-                                className="h-8 px-2 text-xs"
-                                onClick={() => openEditUserModal(member)}
-                              >
-                                Edit
-                              </Button>
-                            )}
-                            {canDelete && (
-                              <Button
-                                variant="danger"
-                                className="h-8 px-2 text-xs"
-                                onClick={() => handleDeleteUser(member)}
-                              >
-                                Delete
-                              </Button>
-                            )}
-                            {!canEdit && !canDelete && (
-                              <span className="text-xs text-text-tertiary">
-                                {isSelf ? "—" : "Managed by Superadmin"}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {employees.map((member) => (
+                      <tr key={member.id} className="transition-colors hover:bg-surface-raised/50">
+                        <td className="px-4 py-3 font-medium text-text-primary">
+                          {member.displayName ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-text-secondary">{member.email}</td>
+                        <td className="px-4 py-3 text-xs text-text-secondary">
+                          {member.departmentName ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-text-secondary">
+                          {new Date(member.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="space-x-2 px-4 py-3 text-right">
+                          <Button
+                            variant="ghost"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => openEditUserModal(member)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => handleDeleteUser(member)}
+                          >
+                            Delete
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </Card>

@@ -393,6 +393,36 @@ export async function listPendingUsers(): Promise<SuperadminUser[]> {
   }));
 }
 
+export async function listCompanyAdmins(): Promise<SuperadminUser[]> {
+  const response = await apiFetch(`${API_URL}/superadmin/users?role=admin`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to load company admins: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    id: string;
+    email: string;
+    display_name: string | null;
+    role: string;
+    approval_status: string;
+    company_id: string | null;
+    company_name: string | null;
+    department_id: string | null;
+    created_at: string;
+  }[];
+  return data.map((u) => ({
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name,
+    role: u.role,
+    approvalStatus: u.approval_status,
+    companyId: u.company_id,
+    companyName: u.company_name,
+    departmentId: u.department_id,
+    createdAt: u.created_at,
+  }));
+}
+
 export async function approveUser(userId: string): Promise<SuperadminUser> {
   const response = await apiFetch(`${API_URL}/superadmin/users/${userId}/approve`, {
     method: "PATCH",

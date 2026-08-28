@@ -99,6 +99,20 @@ vi.mock("@/lib/api", () => ({
       createdAt: "2026-08-25T00:00:00Z",
     },
   ]),
+  listCompanyAdmins: vi.fn().mockResolvedValue([
+    {
+      id: "u2",
+      email: "demo@acme.com",
+      displayName: "Demo Admin",
+      role: "admin",
+      approvalStatus: "approved",
+      companyId: "c1",
+      companyName: "Acme Corp",
+      departmentId: null,
+      createdAt: "2026-08-25T00:00:00Z",
+    },
+  ]),
+  deleteSuperadminUser: vi.fn().mockResolvedValue({}),
   createUser: vi.fn().mockResolvedValue({}),
   updateUser: vi.fn().mockResolvedValue({}),
   deleteUser: vi.fn().mockResolvedValue({}),
@@ -145,7 +159,7 @@ describe("Auth and Admin Pages", () => {
   });
 
   describe("AdminPage", () => {
-    it("renders company admin tabs (Stats, Team) when logged in as company admin", () => {
+    it("renders company admin tabs (Stats, Employees) when logged in as company admin", () => {
       mockUseAuth.mockReturnValueOnce({
         token: "test-token",
         isReady: true,
@@ -170,9 +184,10 @@ describe("Auth and Admin Pages", () => {
       const html = renderToString(createElement(AdminPage));
       expect(html).toContain("Admin");
       expect(html).toContain("Stats");
-      expect(html).toContain("Team");
+      expect(html).toContain("Employees");
       expect(html).not.toContain("Pending Approvals");
       expect(html).not.toContain("Companies");
+      expect(html).not.toContain("Company Admins");
       expect(html).toContain("Usage across the vault, last 30 days.");
     });
 
@@ -202,8 +217,9 @@ describe("Auth and Admin Pages", () => {
       expect(html).toContain("Admin");
       expect(html).toContain("Pending Approvals");
       expect(html).toContain("Companies");
+      expect(html).toContain("Company Admins");
       expect(html).toContain("Stats");
-      expect(html).toContain("Team");
+      expect(html).not.toContain("Employees");
       expect(html).toContain("Platform administration and organization management.");
     });
   });

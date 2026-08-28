@@ -36,10 +36,13 @@ def list_users(
     session: SessionDep,
     current_user: SuperAdminDep,
     approval_status: str | None = Query(default=None),
+    role: str | None = Query(default=None),
 ) -> list[SuperadminUserRead]:
     statement = select(User)
     if approval_status is not None:
         statement = statement.where(User.approval_status == approval_status)
+    if role is not None:
+        statement = statement.where(User.role == role)
     statement = statement.order_by(User.created_at.desc())
 
     users = session.exec(statement).all()

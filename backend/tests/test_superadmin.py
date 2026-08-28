@@ -329,3 +329,24 @@ def test_end_to_end_superadmin_approval_lifecycle(db_engine):
     assert me_data["role"] == "admin"
     assert me_data["company_name"] == "Acme Ventures"
     assert me_data["approval_status"] == "approved"
+
+    # 7. Superadmin deletes Alice (company admin)
+    del_res = sa_client.delete(f"/superadmin/users/{alice_id}")
+    assert del_res.status_code == 204
+
+    # Alice can no longer log in
+    alice_login_after_del = anon_client.post(
+        "/auth/login",
+        json={"email": "alice@acme.com", "password": "alicepassword123"},
+    )
+    assert alice_login_after_del.status_code == 401
+
+
+def test_superadmin_delete_user_prevents_self_deletion(db_engine):
+    sa_client, sa_user = _create_superadmin_client(db_engine)
+
+    # Superadmin cannot delete self
+    del_res = sa_client.delete(f"/superadmin/users/{sa_user.id}")
+    assert del_res.status_code == 403
+    assert del_res.json()["detail"] == "Cannot delete own account"
+

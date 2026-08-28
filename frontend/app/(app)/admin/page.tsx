@@ -40,7 +40,7 @@ interface TabItem {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { isSuperAdmin, isAdmin, isReady } = useAuth();
+  const { isSuperAdmin, isAdmin, isReady, user: authUser } = useAuth();
 
   // Tab State
   const availableTabs: TabItem[] = isSuperAdmin
@@ -793,11 +793,22 @@ export default function AdminPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {teamUsers.map((member) => {
+                      const isSelf = member.id === authUser?.id || member.email === authUser?.email;
                       const isAdminRole = member.role === "admin" || member.role === "superadmin";
+                      const canDelete = isSuperAdmin ? !isSelf : !isSelf && !isAdminRole;
+                      const canEdit = isSuperAdmin ? true : !isAdminRole;
+
                       return (
                         <tr key={member.id} className="transition-colors hover:bg-surface-raised/50">
                           <td className="px-4 py-3 font-medium text-text-primary">
-                            {member.displayName ?? "—"}
+                            <span className="inline-flex items-center gap-1.5">
+                              {member.displayName ?? "—"}
+                              {isSelf && (
+                                <span className="rounded bg-surface-overlay px-1.5 py-0.5 text-[10px] font-normal text-text-secondary">
+                                  You
+                                </span>
+                              )}
+                            </span>
                           </td>
                           <td className="px-4 py-3 font-mono text-xs text-text-secondary">{member.email}</td>
                           <td className="px-4 py-3">
@@ -818,20 +829,29 @@ export default function AdminPage() {
                             {new Date(member.createdAt).toLocaleDateString()}
                           </td>
                           <td className="space-x-2 px-4 py-3 text-right">
-                            <Button
-                              variant="ghost"
-                              className="h-8 px-2 text-xs"
-                              onClick={() => openEditUserModal(member)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              variant="danger"
-                              className="h-8 px-2 text-xs"
-                              onClick={() => handleDeleteUser(member)}
-                            >
-                              Delete
-                            </Button>
+                            {canEdit && (
+                              <Button
+                                variant="ghost"
+                                className="h-8 px-2 text-xs"
+                                onClick={() => openEditUserModal(member)}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                variant="danger"
+                                className="h-8 px-2 text-xs"
+                                onClick={() => handleDeleteUser(member)}
+                              >
+                                Delete
+                              </Button>
+                            )}
+                            {!canEdit && !canDelete && (
+                              <span className="text-xs text-text-tertiary">
+                                {isSelf ? "—" : "Managed by Superadmin"}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -935,22 +955,24 @@ export default function AdminPage() {
                 </select>
               </div>
 
-              <div>
-                <Label htmlFor="user-role">Role</Label>
-                <select
-                  id="user-role"
-                  value={userFormRole}
-                  onChange={(e) => setUserFormRole(e.target.value as "member" | "admin")}
-                  className="mt-1 h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-sm text-text-primary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
-                >
-                  <option value="member" className="bg-surface-raised">
-                    Member
-                  </option>
-                  <option value="admin" className="bg-surface-raised">
-                    Admin
-                  </option>
-                </select>
-              </div>
+              {isSuperAdmin ? (
+                <div>
+                  <Label htmlFor="user-role">Role</Label>
+                  <select
+                    id="user-role"
+                    value={userFormRole}
+                    onChange={(e) => setUserFormRole(e.target.value as "member" | "admin")}
+                    className="mt-1 h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-sm text-text-primary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+                  >
+                    <option value="member" className="bg-surface-raised">
+                      Member
+                    </option>
+                    <option value="admin" className="bg-surface-raised">
+                      Admin
+                    </option>
+                  </select>
+                </div>
+              ) : null}
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button

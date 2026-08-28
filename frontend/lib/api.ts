@@ -457,6 +457,16 @@ export async function rejectUser(userId: string): Promise<SuperadminUser> {
   };
 }
 
+export async function deleteSuperadminUser(userId: string): Promise<void> {
+  const response = await apiFetch(`${API_URL}/superadmin/users/${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Failed to delete user: ${response.status}`);
+  }
+}
+
 export type SuperadminCompany = {
   id: string;
   name: string;

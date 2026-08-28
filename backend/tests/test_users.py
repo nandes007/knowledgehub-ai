@@ -154,6 +154,21 @@ def test_get_users_returns_only_admin_company_users(db_engine):
     assert "admin1@c1.com" not in c2_emails
 
 
+def test_post_users_rejects_admin_role_creation_by_company_admin(db_engine):
+    client, _, dept, _ = _setup_company_admin_and_dept(db_engine)
+
+    payload = {
+        "email": "newadmin@acme.com",
+        "password": "password123",
+        "display_name": "New Admin",
+        "department_id": str(dept.id),
+        "role": "admin",
+    }
+    response = client.post("/users", json=payload)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Company admins can only create employee users"
+
+
 def test_patch_user_updates_fields(db_engine):
     client, _, dept, _ = _setup_company_admin_and_dept(db_engine)
 
@@ -170,17 +185,34 @@ def test_patch_user_updates_fields(db_engine):
     )
     user_id = create_res.json()["id"]
 
-    # Patch display_name, department_id, and promote to admin
+    # Patch display_name and department_id
     patch_res = client.patch(
         f"/users/{user_id}",
-        json={"display_name": "Charlie Product Lead", "department_id": str(dept2_id), "role": "admin"},
+        json={"display_name": "Charlie Product Lead", "department_id": str(dept2_id)},
     )
     assert patch_res.status_code == 200
     data = patch_res.json()
     assert data["display_name"] == "Charlie Product Lead"
     assert data["department_id"] == str(dept2_id)
     assert data["department_name"] == "Product"
-    assert data["role"] == "admin"
+    assert data["role"] == "member"
+
+
+def test_patch_user_rejects_role_escalation_to_admin(db_engine):
+    client, _, dept, _ = _setup_company_admin_and_dept(db_engine)
+
+    create_res = client.post(
+        "/users",
+        json={"email": "emp@acme.com", "password": "pw", "display_name": "Emp", "department_id": str(dept.id)},
+    )
+    user_id = create_res.json()["id"]
+
+    patch_res = client.patch(
+        f"/users/{user_id}",
+        json={"role": "admin"},
+    )
+    assert patch_res.status_code == 403
+    assert patch_res.json()["detail"] == "Company admins cannot assign admin role"
 
 
 def test_patch_user_cross_company_returns_404(db_engine):
@@ -221,6 +253,36 @@ def test_delete_user_in_same_company(db_engine):
     assert login_res.status_code == 401
 
 
+def test_delete_user_prevents_self_deletion(db_engine):
+    client, admin, _, _ = _setup_company_admin_and_dept(db_engine)
+
+    del_res = client.delete(f"/users/{admin.id}")
+    assert del_res.status_code == 403
+    assert del_res.json()["detail"] == "Cannot delete own account"
+
+
+def test_delete_user_prevents_company_admin_from_deleting_other_admins(db_engine):
+    client, admin, dept, company = _setup_company_admin_and_dept(db_engine)
+
+    # Create another admin in the same company directly in DB
+    with Session(db_engine, expire_on_commit=False) as session:
+        admin2 = User(
+            email="admin2@acme.com",
+            password_hash=hash_password("pw123"),
+            role="admin",
+            approval_status="approved",
+            company_id=company.id,
+            department_id=dept.id,
+        )
+        session.add(admin2)
+        session.commit()
+        admin2_id = admin2.id
+
+    del_res = client.delete(f"/users/{admin2_id}")
+    assert del_res.status_code == 403
+    assert del_res.json()["detail"] == "Company admins can only delete employee users"
+
+
 def test_delete_user_cross_company_returns_404(db_engine):
     client1, _, dept1, _ = _setup_company_admin_and_dept(db_engine, company_name="Company 1", admin_email="admin1@1.com")
     client2, _, dept2, _ = _setup_company_admin_and_dept(db_engine, company_name="Company 2", admin_email="admin2@2.com")
@@ -252,7 +314,7 @@ def test_users_endpoints_reject_member_role(client, anon_client):
 def test_end_to_end_admin_user_crud_flow(db_engine):
     admin_client, _, dept, comp = _setup_company_admin_and_dept(db_engine)
 
-    # 1. Admin creates a new member
+    # 1. Admin creates a new member employee
     create_res = admin_client.post(
         "/users",
         json={
@@ -270,14 +332,14 @@ def test_end_to_end_admin_user_crud_flow(db_engine):
     assert list_res.status_code == 200
     assert any(u["id"] == dev_id for u in list_res.json())
 
-    # 3. Admin updates user display_name and role
+    # 3. Admin updates employee display_name
     update_res = admin_client.patch(
         f"/users/{dev_id}",
-        json={"display_name": "Senior Dev", "role": "admin"},
+        json={"display_name": "Senior Dev"},
     )
     assert update_res.status_code == 200
     assert update_res.json()["display_name"] == "Senior Dev"
-    assert update_res.json()["role"] == "admin"
+    assert update_res.json()["role"] == "member"
 
     # 4. User logs in successfully and inspects /auth/me
     anon_client = TestClient(app)
@@ -293,10 +355,10 @@ def test_end_to_end_admin_user_crud_flow(db_engine):
     me_res = dev_client.get("/auth/me")
     assert me_res.status_code == 200
     assert me_res.json()["display_name"] == "Senior Dev"
-    assert me_res.json()["role"] == "admin"
+    assert me_res.json()["role"] == "member"
     assert me_res.json()["company_name"] == "Acme Corp"
 
-    # 5. Admin deletes the user
+    # 5. Admin deletes the member employee
     del_res = admin_client.delete(f"/users/{dev_id}")
     assert del_res.status_code == 204
 

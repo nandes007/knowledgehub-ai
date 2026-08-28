@@ -82,6 +82,25 @@ def reject_user(
     return _user_to_read(user, session)
 
 
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(
+    user_id: uuid.UUID,
+    session: SessionDep,
+    current_user: SuperAdminDep,
+) -> None:
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot delete own account",
+        )
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    session.delete(user)
+    session.commit()
+
+
 @router.get("/companies", response_model=list[SuperadminCompanyRead])
 def list_companies(
     session: SessionDep,

@@ -37,14 +37,20 @@ def create_user(
     current_user: AdminDep,
     session: SessionDep,
 ) -> UserRead:
-    if current_user.company_id is None:
+    if current_user.company_id is None and current_user.role != "superadmin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin must belong to a company",
         )
 
+    if current_user.role == "admin" and payload.role != "member":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company admins can only create employee users",
+        )
+
     dept = session.get(Department, payload.department_id)
-    if dept is None or dept.company_id != current_user.company_id:
+    if dept is None or (current_user.company_id and dept.company_id != current_user.company_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Department not found",
@@ -57,13 +63,15 @@ def create_user(
             detail="Email already registered",
         )
 
+    company_id = current_user.company_id if current_user.company_id else dept.company_id
+
     user = User(
         email=payload.email,
         password_hash=hash_password(payload.password),
         display_name=payload.display_name,
         role=payload.role,
         approval_status="approved",
-        company_id=current_user.company_id,
+        company_id=company_id,
         department_id=payload.department_id,
     )
     session.add(user)
@@ -78,17 +86,17 @@ def list_users(
     current_user: AdminDep,
     session: SessionDep,
 ) -> list[UserRead]:
-    if current_user.company_id is None:
+    if current_user.company_id is None and current_user.role != "superadmin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin must belong to a company",
         )
 
-    statement = (
-        select(User)
-        .where(User.company_id == current_user.company_id)
-        .order_by(User.created_at.desc())
-    )
+    statement = select(User)
+    if current_user.company_id is not None:
+        statement = statement.where(User.company_id == current_user.company_id)
+    statement = statement.order_by(User.created_at.desc())
+
     users = session.exec(statement).all()
     return [_user_to_read(u, session) for u in users]
 
@@ -100,22 +108,33 @@ def update_user(
     current_user: AdminDep,
     session: SessionDep,
 ) -> UserRead:
-    if current_user.company_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admin must belong to a company",
-        )
-
     user = session.get(User, user_id)
-    if user is None or user.company_id != current_user.company_id:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
 
+    if current_user.role == "admin":
+        if current_user.company_id is None or user.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        if user.role != "member":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Company admins can only manage employee users",
+            )
+        if payload.role is not None and payload.role != "member":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Company admins cannot assign admin role",
+            )
+
     if payload.department_id is not None:
         dept = session.get(Department, payload.department_id)
-        if dept is None or dept.company_id != current_user.company_id:
+        if dept is None or (user.company_id is not None and dept.company_id != user.company_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Department not found",
@@ -141,18 +160,30 @@ def delete_user(
     current_user: AdminDep,
     session: SessionDep,
 ) -> None:
-    if current_user.company_id is None:
+    if user_id == current_user.id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admin must belong to a company",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete own account",
         )
 
     user = session.get(User, user_id)
-    if user is None or user.company_id != current_user.company_id:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    if current_user.role == "admin":
+        if current_user.company_id is None or user.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        if user.role != "member":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Company admins can only delete employee users",
+            )
 
     session.delete(user)
     session.commit()

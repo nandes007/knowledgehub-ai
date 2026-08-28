@@ -8,6 +8,7 @@ import {
   deleteConversation,
   deleteDepartment,
   deleteDocument,
+  deleteSuperadminUser,
   deleteUser,
   getConversationMessages,
   getMe,
@@ -685,6 +686,19 @@ describe("rejectUser", () => {
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toContain("/superadmin/users/u1/reject");
     expect(options.method).toBe("PATCH");
+  });
+});
+
+describe("deleteSuperadminUser", () => {
+  it("DELETEs /superadmin/users/{id}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteSuperadminUser("u1");
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain("/superadmin/users/u1");
+    expect(options.method).toBe("DELETE");
   });
 });
 

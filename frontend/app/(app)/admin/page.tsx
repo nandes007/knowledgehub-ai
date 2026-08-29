@@ -739,7 +739,7 @@ export default function AdminPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {companyAdmins.map((adminUser) => {
-                    const isSelf = adminUser.id === authUser?.id || adminUser.email === authUser?.email;
+                    const isSelf = adminUser.email === authUser?.email;
                     return (
                       <tr key={adminUser.id} className="transition-colors hover:bg-surface-raised/50">
                         <td className="px-4 py-3 font-medium text-text-primary">

@@ -193,6 +193,10 @@
         dest: "{{ app_dir }}/.env"
         mode: "0600"
 
+    - name: Prune unused images before build to ensure disk space
+      ansible.builtin.command: podman image prune -f
+      changed_when: false
+
     - name: Build images
       # 5-15 minutes on the first run: base image pulls plus the Next.js build.
       # Run detached and poll: the build then survives an SSH drop, because each
@@ -255,6 +259,10 @@
         daemon_reload: true
         enabled: true
         state: restarted
+
+    - name: Prune dangling images after build
+      ansible.builtin.command: podman image prune -f
+      changed_when: false
 
     # A failed health check on its own says nothing useful - rootless podman's
     # port forwarder accepts and resets, so the real reason is only in the logs.

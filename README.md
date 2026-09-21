@@ -1,83 +1,343 @@
 # KnowledgeHub AI
 
-**Live:** [knowledgehubai.nandes.tech](https://knowledgehubai.nandes.tech) · **Status:** v1.0.0 MVP
+[Live application](https://knowledgehubai.nandes.tech) · [Report an issue](https://github.com/nandes007/knowledgehub-ai/issues/new) · [View open issues](https://github.com/nandes007/knowledgehub-ai/issues)
 
-Internal knowledge assistant that solves knowledge loss from employee turnover. Employees upload company documents (PDF, Word, PowerPoint, Markdown), and anyone can chat with the knowledge base — with streaming answers, conversation history, and source citations. Full-stack, production-ready RAG product: auth, rate limiting, structured logging with cost tracking, and a live HTTPS deployment.
+KnowledgeHub AI is a self-hostable knowledge assistant for teams, developed in public and intended for open-source collaboration. It turns internal documents into a searchable knowledge base so employees can ask questions and receive concise, source-cited answers.
 
-## Demo
+The project addresses a common problem: important knowledge is often scattered across files or leaves with the people who created it. KnowledgeHub AI keeps that information accessible, searchable, and tied to its original source.
 
-> Screenshots/GIF pending — see [`docs/screenshots/`](docs/screenshots/) for what's expected and drop them in there once captured; swap this note for `![...](...)` tags pointing at those files.
+## Contents
 
-The loop the product is built around: upload a PDF → it's chunked and embedded in the background → ask a question → get a streamed, cited answer pulled from that document.
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Access model](#access-model)
+- [Tech stack](#tech-stack)
+- [Run locally with Docker](#run-locally-with-docker)
+- [Run without Docker](#run-without-docker)
+- [Configuration](#configuration)
+- [Tests and quality checks](#tests-and-quality-checks)
+- [Contributing](#contributing)
+- [Deployment](#deployment)
+- [Current limitations](#current-limitations)
+- [License](#license)
 
-## Features
+## What it does
 
-- **Chat with your documents** — RAG over uploaded content, answers stream token-by-token over SSE
-- **Source citations** — every grounded answer shows which document(s) it came from
-- **Conversation history** — persisted, resumable, listed in a sidebar
-- **Knowledge upload** — PDF / DOCX / PPTX / MD → background ingestion → searchable, with live status and duplicate detection
-- **Auth** — email + password (JWT), all data scoped per user
-- **Production hygiene** — per-user rate limiting, input length limits, strict CORS, security headers, structured JSON logs, an admin stats endpoint (messages/day, doc count, estimated LLM cost)
-- **Dockerized**, deployed at a live URL
+- Uploads PDF, DOCX, PPTX, and Markdown files.
+- Converts, chunks, embeds, and indexes documents in the background.
+- Combines semantic search with BM25 keyword search and reciprocal rank fusion.
+- Streams answers to the browser with Server-Sent Events (SSE).
+- Shows the source documents used for each answer.
+- Saves conversations so users can return to previous work.
+- Separates data by company and supports company-wide or department-only documents.
+- Provides member, company admin, and platform superadmin roles.
+- Gives admins usage, document, and estimated LLM cost statistics.
+- Includes rate limiting, strict CORS, security headers, structured logs, and database migrations.
 
-## Architecture
+## How it works
+
+The main product loop is simple:
+
+1. An administrator uploads a company document.
+2. The API saves the file and immediately marks it as `processing`.
+3. A background task converts the file to Markdown, splits it into chunks, creates embeddings, and writes the chunks to Chroma.
+4. The document becomes `ready` and can be searched.
+5. An employee asks a question.
+6. The retrieval pipeline finds relevant chunks allowed by the employee's company and department.
+7. The LLM receives those chunks, recent conversation history, and grounding instructions.
+8. The answer streams to the browser and is saved with its sources.
 
 ```mermaid
-flowchart TD
-    U[User - browser] -->|upload PDF/DOCX/PPTX/MD| API[FastAPI]
-    API -->|save file, insert documents row status=processing| PG[(PostgreSQL)]
-    API -->|202 immediately| U
-    API -->|BackgroundTasks| ING[Ingestion pipeline]
-    ING -->|convert -> chunk -> embed| VEC[(Chroma - per-file upsert)]
-    ING -->|status=ready/failed + chunk_count| PG
+flowchart LR
+    User[Employee] -->|upload document| API[FastAPI API]
+    API --> Files[(Uploaded files)]
+    API --> DB[(PostgreSQL)]
+    API --> Ingest[Background ingestion]
+    Ingest --> Convert[Convert and chunk]
+    Convert --> Embed[Create embeddings]
+    Embed --> Chroma[(Chroma vector store)]
 
-    U -->|ask question, SSE| API2[FastAPI /chat]
-    API2 -->|retrieve top-k| VEC
-    API2 -->|build prompt + last N messages| PG
-    API2 -->|stream tokens| LLM[LLM provider]
-    LLM -->|token stream| API2
-    API2 -->|SSE data frames, then done event with sources| U
-    API2 -->|persist user + assistant message| PG
+    User -->|ask a question| API
+    API --> Retrieve[Dense search + BM25 + RRF]
+    Retrieve --> Chroma
+    API --> DB
+    Retrieve --> LLM[OpenAI chat model]
+    LLM -->|SSE token stream| User
 ```
 
-Full data model, request-flow detail, and the backup approach live in [`docs/architecture.md`](docs/architecture.md).
+PostgreSQL stores accounts, companies, departments, document metadata, conversations, and messages. Uploaded files are the source material, while Chroma is a derived search index that can be rebuilt by ingesting those files again.
 
-## Design decisions
+## Access model
 
-Four trade-offs that shaped the build:
+KnowledgeHub AI is multi-tenant. Data and retrieval are scoped to a company.
 
-| Decision | Why |
-|---|---|
-| **SSE over WebSockets** | The token stream only ever flows server → client — there's no need for a client → server channel mid-answer. SSE gets that with a plain HTTP response and automatic browser reconnection, instead of a full duplex protocol, a separate handshake, and manual reconnect logic. |
-| **Per-file upsert over full collection rebuild** | Naively re-embedding and re-indexing the entire knowledge base on every upload is O(n) work for an O(1) change, and it doesn't scale past a handful of documents. Each chunk gets a deterministic ID (`{document_id}::{chunk_index}::{content_hash[:12]}`), so re-ingesting or deleting one file only ever touches that file's vectors. |
-| **Monorepo** | Backend and frontend evolve together during MVP build-out, and the only coupling between them is the HTTP API contract (`docs/api-contract.md`). Keeping them in one repo means an API change and its consuming frontend change land in a single commit instead of a cross-repo version dance. |
-| **`BackgroundTasks` over Celery** | Ingestion is I/O-bound, infrequent relative to chat traffic, and a single backend replica is already a hard constraint (Chroma's on-disk index can't be shared across writers — see below). A queue + worker + broker is real operational surface area for a problem `BackgroundTasks` already solves at this scale; revisit only if ingestion volume demands horizontal scaling. |
+| Role | Responsibilities |
+| --- | --- |
+| Member | Chat with permitted knowledge and view their conversations. |
+| Company admin | Manage documents, departments, team members, and company usage. |
+| Platform superadmin | Approve registrations and manage companies and company admins. |
 
-One consequence worth naming: because Chroma runs in-process against a local persist directory, **the backend can only ever run as a single replica** — two processes writing the same vector store would corrupt it. That's part of why `BackgroundTasks` (in-process, no separate worker fleet) was the right call for v1, not just the simplest one.
+Company documents are visible to everyone in that company. Department documents are available only to members of the matching department; company admins can manage all documents in their company.
 
-## Stack
+## Tech stack
 
-FastAPI + PostgreSQL + Chroma on the backend, Next.js + TypeScript + Tailwind on the frontend, SSE for streaming, JWT auth, Docker Compose for local dev, deployed on a single IPv6-only VPS behind Cloudflare with rootless Podman. Full rationale in [`docs/architecture.md`](docs/architecture.md).
+| Area | Technology |
+| --- | --- |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| Backend API | Python 3.12, FastAPI, Uvicorn |
+| Relational data | PostgreSQL 16, SQLModel, SQLAlchemy, Alembic |
+| Retrieval | Chroma, OpenAI embeddings, BM25, reciprocal rank fusion |
+| Document processing | MarkItDown, LangChain text splitters |
+| Answer generation | OpenAI API with a provider abstraction |
+| Authentication | JWT, Passlib, bcrypt |
+| Streaming | Server-Sent Events |
+| Testing | pytest, HTTPX, Vitest |
+| Local runtime | Docker Compose |
+| Production | Podman, nginx, Cloudflare, Ansible, Tailscale |
 
-## Run locally
+## Repository structure
+
+```text
+knowledgehub-ai/
+├── backend/
+│   ├── app/                 # FastAPI routes, models, services, and auth
+│   ├── ingestion/           # conversion, chunking, and vector indexing
+│   ├── alembic/             # database migrations
+│   ├── evals/               # retrieval and RAGAS evaluation tools
+│   └── tests/               # backend test suite
+├── frontend/
+│   ├── app/                 # Next.js routes and layouts
+│   ├── components/          # product UI components
+│   └── lib/                 # API, auth, and SSE clients
+├── deploy/ansible/          # production provisioning and deployment
+├── docs/                    # architecture, API, evaluation, and deployment docs
+├── docker-compose.yml       # local development stack
+└── .env.example             # documented environment variables
+```
+
+## Run locally with Docker
+
+### Prerequisites
+
+- Git
+- Docker with the Compose plugin
+- An OpenAI API key
+
+Clone the repository and create your local environment file:
 
 ```bash
-git clone https://github.com/nandes007/knowledgehub-ai.git && cd knowledgehub-ai
-cp .env.example .env   # fill in OPENAI_API_KEY at minimum
-docker compose up
+git clone https://github.com/nandes007/knowledgehub-ai.git
+cd knowledgehub-ai
+cp .env.example .env
 ```
 
-Frontend at `http://localhost:3000`, backend at `http://localhost:8000` (`/healthz` for a liveness check).
+Set at least these values in `.env`:
 
-## Docs
+```dotenv
+OPENAI_API_KEY=your-openai-api-key
+JWT_SECRET=replace-this-with-a-long-random-value
+```
 
-- [`docs/architecture.md`](docs/architecture.md) — data flow, diagrams, design decisions, backup approach
-- [`docs/api-contract.md`](docs/api-contract.md) — endpoints, request/response shapes, SSE event format
-- [`docs/deployment-plan.md`](docs/deployment-plan.md) — the live-deployment setup (IPv6-only host, Cloudflare, Podman, Supabase)
-- [`docs/evals.md`](docs/evals.md) — retrieval + RAGAS evaluation: method, baseline numbers, and what the hybrid-search experiment measured
-- [`knowledgehub-ai.md`](knowledgehub-ai.md) — full project plan
-- [`tasks/todo.md`](tasks/todo.md) — task-by-task build tracker, linked to GitHub issues
+You can generate a development JWT secret with:
 
-## What's next
+```bash
+openssl rand -hex 32
+```
 
-MVP scope (auth, streaming chat, upload/ingest, citations, deploy, observability, hardening) is done, along with department-scoped visibility, hybrid search, an admin dashboard, and the evaluation suite in [`docs/evals.md`](docs/evals.md). Planned next: exact-identifier eval questions to settle the `HYBRID_SEARCH` default, and a larger corpus so `recall@5` regains signal — see [`knowledgehub-ai.md`](knowledgehub-ai.md) for the full v2 plan.
+Build and start the application, then apply the database migrations:
+
+```bash
+docker compose up --build -d
+docker compose exec backend alembic upgrade head
+```
+
+Use `docker compose logs -f` to follow the application logs.
+
+The services will be available at:
+
+| Service | URL |
+| --- | --- |
+| Web application | <http://localhost:3000> |
+| API | <http://localhost:8000> |
+| Interactive API docs | <http://localhost:8000/docs> |
+| Health check | <http://localhost:8000/healthz> |
+| PostgreSQL | `localhost:5432` |
+
+### Create the first superadmin
+
+Registration creates a company administrator in a pending state. Bootstrap one platform superadmin so registrations can be approved:
+
+```bash
+docker compose exec backend python -m app.cli create-superadmin \
+  --email admin@example.com \
+  --password 'replace-with-a-secure-password'
+```
+
+Then:
+
+1. Register a company account at <http://localhost:3000/register>.
+2. Sign in as the superadmin and open <http://localhost:3000/admin>.
+3. Approve the pending company administrator.
+4. Sign in with the approved company account.
+
+Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to delete the local PostgreSQL, Chroma, and upload data.
+
+## Run without Docker
+
+For development directly on the host, install Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22+, and PostgreSQL 16. Create `.env` as described above and make sure its `DATABASE_URL` points to your local database.
+
+Start the backend:
+
+```bash
+cd backend
+uv sync --extra dev
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+In another terminal, start the frontend:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+The backend reads the repository root `.env` even when it is started from `backend/`.
+
+## Configuration
+
+Copy `.env.example` rather than committing a real `.env`. The main settings are:
+
+| Variable | Purpose | Local default |
+| --- | --- | --- |
+| `DATABASE_URL` | SQLAlchemy/psycopg PostgreSQL connection URL | Local PostgreSQL |
+| `OPENAI_API_KEY` | Creates embeddings and generated answers | Required |
+| `CHAT_MODEL` | OpenAI chat model | `gpt-4o-mini` |
+| `EMBEDDING_MODEL` | OpenAI embedding model | `text-embedding-3-small` in `.env.example` |
+| `HYBRID_SEARCH` | Enables dense + BM25 retrieval with RRF | `true` |
+| `JWT_SECRET` | Signs authentication tokens | Must be changed |
+| `JWT_EXPIRE_MINUTES` | Authentication token lifetime | `1440` |
+| `CORS_ORIGINS` | Comma-separated permitted frontend origins | `http://localhost:3000` |
+| `NEXT_PUBLIC_API_URL` | API URL used by the browser | `http://localhost:8000` |
+| `CHROMA_PERSIST_DIR` | Local Chroma index directory | `./.chroma` |
+| `UPLOAD_DIR` | Uploaded source file directory | `./uploads` |
+| `MAX_UPLOAD_SIZE_MB` | Maximum document size | `25` |
+
+Do not change `EMBEDDING_MODEL` after documents have been indexed unless you also rebuild the Chroma index. Vectors created by different embedding models are not compatible.
+
+## Tests and quality checks
+
+Backend:
+
+```bash
+cd backend
+uv sync --extra dev
+uv run pytest
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run lint
+npm run build
+```
+
+Retrieval evaluation is separate from the normal test suite and may call the OpenAI API:
+
+```bash
+cd backend
+uv sync --extra evals
+uv run python -m evals.run_retrieval_metrics
+uv run python -m evals.run_ragas
+```
+
+See [`docs/evals.md`](docs/evals.md) for the dataset, baseline results, experiments, and limitations.
+
+## API and architecture notes
+
+- The backend API contract is documented in [`docs/api-contract.md`](docs/api-contract.md).
+- Chroma runs in-process against a local persistent directory. Production must use one backend replica because multiple writers cannot safely share that directory.
+- Document ingestion currently uses FastAPI `BackgroundTasks`. It is suitable for the current single-replica deployment, but it is not a durable distributed job queue.
+- The current LLM provider implementation uses OpenAI. The service boundary in `backend/app/services/llm.py` is intended to make additional providers possible.
+- Generated answers are instructed to use retrieved company context and to say when the knowledge base does not contain an answer.
+- Database schema changes must be made through Alembic migrations.
+
+More detail is available in [`docs/architecture.md`](docs/architecture.md).
+
+## Contributing
+
+Contributions are welcome from developers, designers, technical writers, and people interested in knowledge management or retrieval-augmented generation.
+
+### Before starting
+
+1. Search the [open issues](https://github.com/nandes007/knowledgehub-ai/issues) to avoid duplicate work.
+2. For a bug fix, describe the current behavior, expected behavior, and a reliable way to reproduce it.
+3. For a large feature or architecture change, open an issue first so its scope and approach can be discussed before implementation.
+4. Never include API keys, database passwords, `.env` files, uploaded company documents, or other private data in an issue or commit.
+
+Good first contributions include documentation fixes, accessibility improvements, focused test coverage, support for additional document formats, retrieval evaluation cases, and clearly scoped issues labeled for contributors.
+
+### Development workflow
+
+1. Fork the repository and clone your fork.
+2. Create a focused branch from `main`:
+
+   ```bash
+   git checkout -b fix/short-description
+   ```
+
+3. Follow the local setup instructions and make one focused change.
+4. Add or update tests when behavior changes.
+5. Run the relevant backend and frontend checks listed above.
+6. Update documentation and `docs/api-contract.md` when an API changes.
+7. Push the branch and open a pull request against `main`.
+
+A useful pull request explains the problem, the resulting behavior, how it was tested, and any migration or configuration changes. Link the related issue with `Closes #123` when appropriate. Keep unrelated formatting or refactoring out of the same pull request so reviewers can assess the change clearly.
+
+### Database changes
+
+Create a new Alembic revision for schema changes; do not edit an already-applied migration:
+
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "describe the change"
+uv run alembic upgrade head
+```
+
+Review generated migrations before committing them and include upgrade-path tests for changes that transform existing data.
+
+## Deployment
+
+The public deployment uses an IPv6-capable VPS, rootless Podman, nginx, Cloudflare, PostgreSQL, and Tailscale. Ansible playbooks under `deploy/ansible/` configure the host, application, database, backups, firewall, and private network access.
+
+Deployment is environment-specific and requires encrypted secrets. Start with [`docs/deployment-plan.md`](docs/deployment-plan.md) and never commit a decrypted `deploy/ansible/vault.yml`.
+
+## Project documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — system design, data model, retrieval, and backups
+- [`docs/api-contract.md`](docs/api-contract.md) — endpoint and SSE response contract
+- [`docs/evals.md`](docs/evals.md) — retrieval and answer-quality evaluation
+- [`docs/deployment-plan.md`](docs/deployment-plan.md) — production infrastructure and operational checks
+- [`knowledgehub-ai.md`](knowledgehub-ai.md) — original product and implementation plan
+- [`tasks/`](tasks/) — historical implementation tasks and milestone notes
+
+The GitHub issue tracker is the current source for proposed work and contributor discussion.
+
+## Current limitations
+
+- Uploaded files and Chroma data live on one server.
+- The backend is limited to one replica while using the embedded Chroma store.
+- Background ingestion is not resumed automatically if the process stops mid-job.
+- Scanned or image-only documents require OCR before upload.
+- The evaluation corpus is synthetic and still small compared with a production company knowledge base.
+- The project currently supports OpenAI as its LLM and embedding provider.
+
+These constraints are deliberate for the current scale and are useful areas for future contribution.
+
+## License
+
+This repository does not currently include a software license. Contributions are welcome, but reuse and redistribution terms are not formally granted until a license is added. If you maintain the project, choose an OSI-approved license before presenting it as fully open source.

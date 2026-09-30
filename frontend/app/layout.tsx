@@ -16,8 +16,33 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://knowledgehubai.nandes.tech"),
   title: "KnowledgeHub AI",
-  description: "Chat with your company's knowledge base.",
+  description:
+    "A self-hostable AI knowledge assistant for teams with RAG, hybrid search, and source citations.",
+  openGraph: {
+    title: "KnowledgeHub AI",
+    description:
+      "A self-hostable AI knowledge assistant for teams with RAG, hybrid search, and source citations.",
+    url: "https://knowledgehubai.nandes.tech",
+    siteName: "KnowledgeHub AI",
+    images: [
+      {
+        url: "/knowledgehub-og.png",
+        width: 1200,
+        height: 630,
+        alt: "KnowledgeHub AI — AI-powered knowledge assistant for teams",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "KnowledgeHub AI",
+    description:
+      "A self-hostable AI knowledge assistant for teams with RAG, hybrid search, and source citations.",
+    images: ["/knowledgehub-og.png"],
+  },
 };
 
 export default function RootLayout({

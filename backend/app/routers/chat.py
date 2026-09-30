@@ -16,7 +16,7 @@ from app.models.message import Message
 from app.rate_limit import limiter
 from app.schemas.chat import ChatRequest
 from app.services.llm import LLMProvider, TokenUsage, get_llm_provider
-from app.services.rag import stream_answer
+from app.services.rag import HistoryTurn, stream_answer
 from ingestion.index import VectorStore, get_vector_store
 
 router = APIRouter()
@@ -53,7 +53,7 @@ def _get_or_create_conversation(
     return conversation
 
 
-def _recent_history(session: Session, conversation_id: uuid.UUID, limit: int) -> list[dict[str, str]]:
+def _recent_history(session: Session, conversation_id: uuid.UUID, limit: int) -> list[HistoryTurn]:
     statement = (
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -62,7 +62,10 @@ def _recent_history(session: Session, conversation_id: uuid.UUID, limit: int) ->
     )
     rows = list(session.exec(statement))
     rows.reverse()
-    return [{"role": m.role, "content": m.content} for m in rows]
+    return [
+        {"role": m.role, "content": m.content, "has_sources": bool(m.sources)}
+        for m in rows
+    ]
 
 
 def _event_stream(

@@ -49,7 +49,7 @@ all:
     s3_bucket: nandestech-bucket
     aws_region: ap-southeast-2 # Sydney
     aws_access_key_id: "{{ vault_aws_access_key_id }}"
-    aws_secret_access_key: "{{ vault_aws_secret_access_key }}
+    aws_secret_access_key: "{{ vault_aws_secret_access_key }}"
 
     # --- Tailscale (tailscale.yml) ---
     # Set true after running tailscale.yml, then re-run postgres.yml to open

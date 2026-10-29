@@ -133,6 +133,23 @@ describe("Chat Experience Components", () => {
       expect(html).toContain("bg-surface-raised");
       expect(html).toContain("max-w-md");
     });
+
+    it("groups chunks from the same document into one pill", () => {
+      const html = renderToString(
+        createElement(SourceList, {
+          sources: [
+            { document_id: "doc-1", filename: "aml.md", chunk_preview: "Chunk A" },
+            { document_id: "doc-1", filename: "aml.md", chunk_preview: "Chunk B" },
+            { document_id: "doc-2", filename: "pep.md", chunk_preview: "Chunk C" },
+          ],
+        }),
+      );
+
+      expect(html.match(/<summary/g)).toHaveLength(2);
+      expect(html).toContain("2 sections");
+      expect(html).toContain("Chunk A");
+      expect(html).toContain("Chunk B");
+    });
   });
 
   describe("ChatPanel", () => {

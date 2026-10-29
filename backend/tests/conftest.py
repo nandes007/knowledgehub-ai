@@ -6,11 +6,18 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app import models  # noqa: F401 - registers tables on SQLModel.metadata
+from app.config import settings
 from app.db import get_engine, get_session
 from app.main import app
 from app.models.company import Company
 from app.models.user import User
 from app.services.auth import create_access_token, decode_access_token, hash_password
+
+
+@pytest.fixture(autouse=True)
+def _no_real_s3(monkeypatch):
+    """A developer's .env may set S3_BUCKET; tests must never touch the real bucket."""
+    monkeypatch.setattr(settings, "s3_bucket", "")
 
 
 @pytest.fixture

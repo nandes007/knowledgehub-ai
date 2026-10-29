@@ -3,6 +3,7 @@ from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
 from sqlmodel import select
 
@@ -13,6 +14,7 @@ from app.models.department import Department
 from app.models.document import Document
 from app.rate_limit import limiter
 from app.schemas.document import DocumentRead, DocumentSummary
+from app.services import storage
 from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
 from ingestion.pipeline import ingest_document
@@ -76,10 +78,7 @@ async def upload_document(
         )
 
     document_id = uuid.uuid4()
-    upload_dir = Path(settings.upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / f"{document_id}{Path(file.filename or '').suffix}"
-    file_path.write_bytes(contents)
+    file_path = await run_in_threadpool(storage.save, f"{document_id}{extension}", contents)
 
     document = Document(
         id=document_id,
@@ -87,7 +86,7 @@ async def upload_document(
         uploaded_by=current_user.id,
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
-        file_path=str(file_path),
+        file_path=file_path,
         file_hash=file_hash,
         status="processing",
         department_id=department_id,
@@ -149,7 +148,7 @@ def delete_document(
     if document is None or document.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    Path(document.file_path).unlink(missing_ok=True)
+    storage.delete(document.file_path)
     vector_store.delete_by_document(str(document.id))
     session.delete(document)
     session.commit()

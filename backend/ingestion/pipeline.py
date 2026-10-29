@@ -5,6 +5,7 @@ from sqlalchemy import Engine
 from sqlmodel import Session
 
 from app.models.document import Document
+from app.services import storage
 from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.chunk import chunk_markdown
 from ingestion.convert import convert_to_markdown
@@ -72,19 +73,20 @@ def ingest_document(
             return
 
         try:
-            chunk_count = ingest_file(
-                Path(document.file_path),
-                document_id=str(document.id),
-                user_id=str(document.user_id),
-                filename=document.filename,
-                doc_type=document.doc_type,
-                company_id=str(document.company_id),
-                department_id=str(document.department_id) if document.department_id else None,
-                department=document.department,
-                visibility=document.visibility,
-                llm=llm,
-                vector_store=vector_store,
-            )
+            with storage.local_copy(document.file_path) as file_path:
+                chunk_count = ingest_file(
+                    file_path,
+                    document_id=str(document.id),
+                    user_id=str(document.user_id),
+                    filename=document.filename,
+                    doc_type=document.doc_type,
+                    company_id=str(document.company_id),
+                    department_id=str(document.department_id) if document.department_id else None,
+                    department=document.department,
+                    visibility=document.visibility,
+                    llm=llm,
+                    vector_store=vector_store,
+                )
         except Exception as exc:
             document.status = "failed"
             document.error_message = str(exc)

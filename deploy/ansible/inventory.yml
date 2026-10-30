@@ -54,7 +54,7 @@ all:
     # --- Qdrant (qdrant.yml) ---
     # Pinned so a re-run never upgrades the vector store by surprise. Bump
     # deliberately: https://github.com/qdrant/qdrant/releases
-    qdrant_version: v1.15.0
+    qdrant_version: v1.20.0
 
     # --- Tailscale (tailscale.yml) ---
     # Set true after running tailscale.yml, then re-run postgres.yml to open

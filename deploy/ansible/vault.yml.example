@@ -24,3 +24,7 @@ jwt_secret: "CHANGEME"
 # IAM user knowledgehub-backend - access key limited to s3_bucket/knowledgehub/*.
 aws_access_key_id: "AKIA..."
 aws_secret_access_key: "CHANGEME"
+
+# Qdrant API key for qdrant.yml.
+#   openssl rand -hex 32
+qdrant_api_key: "CHANGEME"

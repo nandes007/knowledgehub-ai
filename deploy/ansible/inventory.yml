@@ -51,6 +51,11 @@ all:
     aws_access_key_id: "{{ vault_aws_access_key_id }}"
     aws_secret_access_key: "{{ vault_aws_secret_access_key }}"
 
+    # --- Qdrant (qdrant.yml) ---
+    # Pinned so a re-run never upgrades the vector store by surprise. Bump
+    # deliberately: https://github.com/qdrant/qdrant/releases
+    qdrant_version: v1.15.0
+
     # --- Tailscale (tailscale.yml) ---
     # Set true after running tailscale.yml, then re-run postgres.yml to open
     # 5432 to the tailnet (100.64.0.0/10) - no public IPv6, no SSH tunnel.

@@ -1,0 +1,135 @@
+---
+# Qdrant vector database on the app server, replacing the embedded Chroma store.
+#
+#   ansible-playbook -i inventory.yml qdrant.yml --ask-vault-pass
+#
+# Needs `qdrant_api_key` in vault.yml (see vault.yml.example).
+# Idempotent: re-running reapplies config and restarts Qdrant only if it changed.
+#
+# Rootless podman, host networking - the same way the backend container runs, so
+# the app reaches it on 127.0.0.1:6333. Qdrant listens on every IPv4 address, but
+# ufw's default-deny drops 6333 from everywhere except the tailnet, and every
+# request still needs the API key. The dashboard is not on the public internet.
+
+- name: Run Qdrant
+  hosts: knowledgehub
+  # Connect AS the deploy user: rootless podman and `systemctl --user` need a real
+  # login session (see the deploy play in site.yml).
+  remote_user: "{{ deploy_user }}"
+  vars_files:
+    - vault.yml
+
+  tasks:
+    - name: Require an API key
+      ansible.builtin.assert:
+        that: qdrant_api_key | default('') is match('^[A-Za-z0-9]{32,}$')
+        fail_msg: >-
+          Set qdrant_api_key in vault.yml to 32+ alphanumeric characters:
+          openssl rand -hex 32
+
+    - name: Ensure the quadlet directory exists
+      ansible.builtin.file:
+        path: ~/.config/containers/systemd
+        state: directory
+        mode: "0755"
+
+    # A separate 0600 file, so the key never shows up in the unit file,
+    # `systemctl status` or `podman inspect` output of the unit definition.
+    - name: Write the Qdrant environment file
+      notify: Restart qdrant
+      no_log: true
+      ansible.builtin.copy:
+        dest: ~/.config/containers/systemd/qdrant.env
+        mode: "0600"
+        content: |
+          QDRANT__SERVICE__API_KEY={{ qdrant_api_key }}
+          QDRANT__TELEMETRY_DISABLED=true
+
+    # Quadlet: podman generates qdrant.service from this file on daemon-reload,
+    # with restart-on-failure and start-at-boot handled by systemd.
+    - name: Install the Qdrant container unit
+      notify: Restart qdrant
+      ansible.builtin.copy:
+        dest: ~/.config/containers/systemd/qdrant.container
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Qdrant vector database
+          After=network-online.target
+
+          [Container]
+          ContainerName=qdrant
+          Image=docker.io/qdrant/qdrant:{{ qdrant_version }}
+          Network=host
+          Volume=qdrant_storage:/qdrant/storage
+          EnvironmentFile=%h/.config/containers/systemd/qdrant.env
+
+          [Service]
+          Restart=always
+          # The first start pulls the image, which takes longer than the default 90s.
+          TimeoutStartSec=600
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Start Qdrant
+      environment:
+        XDG_RUNTIME_DIR: /run/user/{{ ansible_facts['user_uid'] }}
+      ansible.builtin.systemd_service:
+        name: qdrant
+        scope: user
+        daemon_reload: true
+        state: started
+
+    - name: Apply pending config now
+      ansible.builtin.meta: flush_handlers
+
+    - name: Open 6333 to the tailnet only
+      become: true
+      community.general.ufw:
+        rule: allow
+        interface: tailscale0
+        direction: in
+        to_port: "6333"
+        proto: tcp
+
+    # Proves the key is enforced, not just that Qdrant is up: a request without
+    # it must be refused, one with it must succeed.
+    - name: Wait for Qdrant to answer with the API key
+      ansible.builtin.uri:
+        url: http://127.0.0.1:6333/collections
+        headers:
+          api-key: "{{ qdrant_api_key }}"
+      register: qdrant_health
+      until: qdrant_health.status == 200
+      retries: 30
+      delay: 5
+      no_log: true
+
+    - name: Check requests without the key are refused
+      ansible.builtin.uri:
+        url: http://127.0.0.1:6333/collections
+        status_code: 401
+
+    - name: How to use it
+      ansible.builtin.debug:
+        msg: |
+          Qdrant {{ qdrant_version }} is up.
+
+          App (on the server)   http://127.0.0.1:6333
+          Dashboard (tailnet)   http://{{ inventory_hostname }}:6333/dashboard
+          API key               qdrant_api_key in deploy/ansible/vault.yml
+
+          Logs:     journalctl --user -u qdrant -f
+          Restart:  systemctl --user restart qdrant
+          Data:     podman volume inspect qdrant_storage
+
+  handlers:
+    - name: Restart qdrant
+      environment:
+        XDG_RUNTIME_DIR: /run/user/{{ ansible_facts['user_uid'] }}
+      ansible.builtin.systemd_service:
+        name: qdrant
+        scope: user
+        daemon_reload: true
+        state: restarted

@@ -159,3 +159,19 @@ def test_ingest_document_is_a_noop_for_an_unknown_document_id(db_engine, tmp_pat
 
     # Should not raise even though no document row exists for this id.
     ingest_document(uuid.uuid4(), engine=db_engine, llm=_FakeLLM(), vector_store=store)
+
+
+def test_reindex_rebuilds_an_empty_store_from_stored_files(db_engine, tmp_path):
+    from app.cli import reindex
+
+    with Session(db_engine, expire_on_commit=False) as session:
+        document_id = _make_document(session, tmp_path).id
+    store = VectorStore(persist_dir=str(tmp_path / "qdrant"))
+
+    assert reindex(db_engine, llm=_FakeLLM(), vector_store=store) == (1, 1)
+    chunks = store.query([1.0, 0.0], top_k=50)
+    assert chunks and all(c["document_id"] == str(document_id) for c in chunks)
+
+    # Re-running overwrites rather than duplicates.
+    reindex(db_engine, llm=_FakeLLM(), vector_store=store)
+    assert len(store.query([1.0, 0.0], top_k=50)) == len(chunks)

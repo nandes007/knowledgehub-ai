@@ -21,12 +21,12 @@ services:
     environment:
       # Container-topology values: not user config, so not sourced from .env.
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/knowledgehub
-      CHROMA_PERSIST_DIR: /data/chroma
+      QDRANT_PATH: /data/qdrant
       UPLOAD_DIR: /data/uploads
     ports:
       - "8000:8000"
     volumes:
-      - chroma_data:/data/chroma
+      - qdrant_data:/data/qdrant
       - uploads_data:/data/uploads
     depends_on:
       postgres:
@@ -51,5 +51,5 @@ services:
 
 volumes:
   postgres_data:
-  chroma_data:
+  qdrant_data:
   uploads_data:

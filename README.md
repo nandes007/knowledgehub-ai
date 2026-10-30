@@ -40,7 +40,7 @@ The main product loop is simple:
 
 1. An administrator uploads a company document.
 2. The API saves the file and immediately marks it as `processing`.
-3. A background task converts the file to Markdown, splits it into chunks, creates embeddings, and writes the chunks to Chroma.
+3. A background task converts the file to Markdown, splits it into chunks, creates embeddings, and writes the chunks to Qdrant.
 4. The document becomes `ready` and can be searched.
 5. An employee asks a question.
 6. The retrieval pipeline finds relevant chunks allowed by the employee's company and department.
@@ -55,17 +55,17 @@ flowchart LR
     API --> Ingest[Background ingestion]
     Ingest --> Convert[Convert and chunk]
     Convert --> Embed[Create embeddings]
-    Embed --> Chroma[(Chroma vector store)]
+    Embed --> Qdrant[(Qdrant vector store)]
 
     User -->|ask a question| API
     API --> Retrieve[Dense search + BM25 + RRF]
-    Retrieve --> Chroma
+    Retrieve --> Qdrant
     API --> DB
     Retrieve --> LLM[OpenAI chat model]
     LLM -->|SSE token stream| User
 ```
 
-PostgreSQL stores accounts, companies, departments, document metadata, conversations, and messages. Uploaded files are the source material, while Chroma is a derived search index that can be rebuilt by ingesting those files again.
+PostgreSQL stores accounts, companies, departments, document metadata, conversations, and messages. Uploaded files (S3, or a local directory in development) are the source material, while Qdrant is a derived search index that `python -m app.cli reindex` rebuilds from those files.
 
 ## Access model
 
@@ -86,7 +86,7 @@ Company documents are visible to everyone in that company. Department documents 
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
 | Backend API | Python 3.12, FastAPI, Uvicorn |
 | Relational data | PostgreSQL 16, SQLModel, SQLAlchemy, Alembic |
-| Retrieval | Chroma, OpenAI embeddings, BM25, reciprocal rank fusion |
+| Retrieval | Qdrant, OpenAI embeddings, BM25, reciprocal rank fusion |
 | Document processing | MarkItDown, LangChain text splitters |
 | Answer generation | OpenAI API with a provider abstraction |
 | Authentication | JWT, Passlib, bcrypt |
@@ -180,7 +180,7 @@ Then:
 3. Approve the pending company administrator.
 4. Sign in with the approved company account.
 
-Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to delete the local PostgreSQL, Chroma, and upload data.
+Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to delete the local PostgreSQL, Qdrant, and upload data.
 
 ## Run without Docker
 
@@ -220,11 +220,14 @@ Copy `.env.example` rather than committing a real `.env`. The main settings are:
 | `JWT_EXPIRE_MINUTES` | Authentication token lifetime | `1440` |
 | `CORS_ORIGINS` | Comma-separated permitted frontend origins | `http://localhost:3000` |
 | `NEXT_PUBLIC_API_URL` | API URL used by the browser | `http://localhost:8000` |
-| `CHROMA_PERSIST_DIR` | Local Chroma index directory | `./.chroma` |
+| `QDRANT_URL` | Qdrant server; empty uses embedded Qdrant in `QDRANT_PATH` | empty |
+| `QDRANT_API_KEY` | Qdrant server API key | empty |
+| `QDRANT_PATH` | Embedded Qdrant directory | `./.qdrant` |
+| `S3_BUCKET` | Store uploads in S3; empty uses `UPLOAD_DIR` | empty |
 | `UPLOAD_DIR` | Uploaded source file directory | `./uploads` |
 | `MAX_UPLOAD_SIZE_MB` | Maximum document size | `25` |
 
-Do not change `EMBEDDING_MODEL` after documents have been indexed unless you also rebuild the Chroma index. Vectors created by different embedding models are not compatible.
+Do not change `EMBEDDING_MODEL` after documents have been indexed unless you also rebuild the index with `python -m app.cli reindex`. Vectors created by different embedding models are not compatible.
 
 ## Tests and quality checks
 
@@ -260,7 +263,7 @@ See [`docs/evals.md`](docs/evals.md) for the dataset, baseline results, experime
 ## API and architecture notes
 
 - The backend API contract is documented in [`docs/api-contract.md`](docs/api-contract.md).
-- Chroma runs in-process against a local persistent directory. Production must use one backend replica because multiple writers cannot safely share that directory.
+- Production uses a Qdrant server (`deploy/ansible/qdrant.yml`). Development and tests use embedded Qdrant, which locks its directory to one process.
 - Document ingestion currently uses FastAPI `BackgroundTasks`. It is suitable for the current single-replica deployment, but it is not a durable distributed job queue.
 - The current LLM provider implementation uses OpenAI. The service boundary in `backend/app/services/llm.py` is intended to make additional providers possible.
 - Generated answers are instructed to use retrieved company context and to say when the knowledge base does not contain an answer.
@@ -329,8 +332,7 @@ The GitHub issue tracker is the current source for proposed work and contributor
 
 ## Current limitations
 
-- Uploaded files and Chroma data live on one server.
-- The backend is limited to one replica while using the embedded Chroma store.
+- Qdrant runs on the same server as the app, so that server is still a single point of failure for search.
 - Background ingestion is not resumed automatically if the process stops mid-job.
 - Scanned or image-only documents require OCR before upload.
 - The evaluation corpus is synthetic and still small compared with a production company knowledge base.

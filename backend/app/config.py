@@ -8,7 +8,10 @@ _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/knowledgehub"
-    chroma_persist_dir: str = "./.chroma"
+    # Set QDRANT_URL to use a Qdrant server; leave empty for embedded Qdrant at qdrant_path.
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+    qdrant_path: str = "./.qdrant"
     llm_provider: str = "openai"
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-large"

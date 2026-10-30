@@ -1,6 +1,6 @@
 """Shared plumbing for the eval scripts: an isolated index over evals/corpus.
 
-The index lives in its own Chroma directory so evals never touch the real
+The index lives in its own embedded-Qdrant directory so evals never touch the real
 knowledge base, and retrieval goes through the production code path in
 `app.services.rag` so the numbers describe the shipped retriever.
 """
@@ -15,7 +15,7 @@ from evals.metrics import CORPUS_DIR
 from ingestion.index import VectorStore
 from ingestion.pipeline import ingest_file
 
-INDEX_ROOT = Path(__file__).resolve().parent / ".chroma-eval"
+INDEX_ROOT = Path(__file__).resolve().parent / ".qdrant-eval"
 DEFAULT_CHUNK_SIZE = 800
 
 

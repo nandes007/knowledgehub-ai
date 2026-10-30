@@ -5,7 +5,6 @@ services:
     environment:
       # DATABASE_URL comes from .env (Supabase connection string).
       # Container-topology values: not user config, so not sourced from .env.
-      CHROMA_PERSIST_DIR: /data/chroma
       UPLOAD_DIR: /data/uploads
     # The host is IPv6-only, and rootless podman's default slirp4netns network is
     # IPv4-only - so a container on it can reach neither Supabase nor the OpenAI
@@ -21,7 +20,6 @@ services:
       - --port
       - "8000"
     volumes:
-      - chroma_data:/data/chroma
       - uploads_data:/data/uploads
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')\""]
@@ -48,5 +46,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  chroma_data:
   uploads_data:

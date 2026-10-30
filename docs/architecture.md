@@ -8,7 +8,7 @@ flowchart TD
     API -->|save file, insert documents row status=processing| PG[(PostgreSQL)]
     API -->|202 immediately| U
     API -->|BackgroundTasks| ING[Ingestion pipeline]
-    ING -->|convert -> chunk -> embed| VEC[(Chroma - per-file upsert)]
+    ING -->|convert -> chunk -> embed| VEC[(Qdrant - per-file upsert)]
     ING -->|status=ready/failed + chunk_count| PG
 
     U -->|ask question, SSE| API2[FastAPI /chat]
@@ -24,8 +24,8 @@ flowchart TD
 
 Four tables: `users`, `conversations`, `messages`, `documents`. Full DDL in [`knowledgehub-ai.md`](../knowledgehub-ai.md#4-data-model--ddl-postgresql).
 
-Vector store convention (Chroma): every chunk gets a deterministic ID
-`{document_id}::{chunk_index}::{content_hash[:12]}` with metadata
+Vector store convention (Qdrant): every chunk gets a deterministic ID - a uuid5 of
+`{document_id}::{chunk_index}::{content_hash[:12]}` - with payload
 `{document_id, user_id, filename, doc_type, department, visibility, h1, h2}`. Re-ingesting a file is delete-then-upsert scoped to that file's `document_id` — the whole collection is never rebuilt.
 
 Retrieval filters on `visibility`/`department` (see `app/services/rag.py`), not `user_id`: a `company`-visibility doc is retrievable by anyone, a `department`-visibility doc only by askers in that same department. `role = 'admin'` skips the filter entirely.
@@ -50,9 +50,9 @@ Uploaded source files (`uploads_data` volume) are the input to ingestion and
 should be backed up the same way (e.g. a nightly `tar`/rsync off-host) - losing
 them means re-uploading, not just re-processing.
 
-The Chroma vector store (`chroma_data` volume) is *not* backed up
-independently: it's fully derivable by re-ingesting the documents already
-backed up above, so restoring it is "re-run ingestion," not "restore from
+The Qdrant vector store (`qdrant_storage` volume, `deploy/ansible/qdrant.yml`) is
+*not* backed up independently: it's fully derivable from the uploaded files
+(S3), so restoring it is `python -m app.cli reindex`, not "restore from
 snapshot."
 
 ## Design decisions

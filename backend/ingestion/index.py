@@ -1,10 +1,11 @@
 import hashlib
 import math
 import re
+import uuid
 from collections import Counter
 from functools import lru_cache
 
-import chromadb
+from qdrant_client import QdrantClient, models
 
 from app.config import settings
 from ingestion.chunk import Chunk
@@ -44,10 +45,43 @@ def _bm25_scores(query: str, documents: list[str]) -> list[float]:
     return scores
 
 
+def _to_filter(where: dict | None) -> models.Filter | None:
+    """Translate the Chroma-style `where` dicts rag.py builds ({"field": value},
+    {"$and": [...]}, {"$or": [...]}) into a Qdrant filter."""
+    if not where:
+        return None
+    if "$and" in where:
+        return models.Filter(must=[_to_filter(w) for w in where["$and"]])
+    if "$or" in where:
+        return models.Filter(should=[_to_filter(w) for w in where["$or"]])
+    return models.Filter(
+        must=[models.FieldCondition(key=k, match=models.MatchValue(value=v)) for k, v in where.items()]
+    )
+
+
+@lru_cache
+def _local_client(path: str) -> QdrantClient:
+    # Embedded mode locks its directory, so every VectorStore on one path must
+    # share a single client.
+    return QdrantClient(path=path)
+
+
 class VectorStore:
     def __init__(self, persist_dir: str | None = None) -> None:
-        client = chromadb.PersistentClient(path=persist_dir or settings.chroma_persist_dir)
-        self._collection = client.get_or_create_collection(_COLLECTION_NAME)
+        """persist_dir (tests, evals) or QDRANT_PATH -> embedded Qdrant, no server;
+        QDRANT_URL -> the Qdrant server."""
+        if persist_dir is None and settings.qdrant_url:
+            self._client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
+        else:
+            self._client = _local_client(persist_dir or settings.qdrant_path)
+
+    def _ensure_collection(self, vector_size: int) -> None:
+        # Created on first write: the vector size comes from the embedding model.
+        if not self._client.collection_exists(_COLLECTION_NAME):
+            self._client.create_collection(
+                _COLLECTION_NAME,
+                vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
+            )
 
     def upsert_chunks(
         self,
@@ -63,51 +97,69 @@ class VectorStore:
         department: str | None = None,
         visibility: str = "company",
     ) -> int:
-        ids = [chunk_id(document_id, c.index, c.text) for c in chunks]
-        metadatas = [
-            {
-                "document_id": document_id,
-                "company_id": company_id or "",
-                "user_id": user_id,
-                "filename": filename,
-                "doc_type": doc_type,
-                "department_id": department_id or "",
-                "department": department or department_id or "",
-                "visibility": visibility,
-                "h1": c.h1 or "",
-                "h2": c.h2 or "",
-            }
-            for c in chunks
+        if not chunks:
+            return 0
+        self._ensure_collection(len(embeddings[0]))
+        points = [
+            models.PointStruct(
+                # Qdrant ids must be UUIDs or ints; uuid5 keeps them deterministic,
+                # so re-ingesting a document overwrites rather than duplicates.
+                id=str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id(document_id, c.index, c.text))),
+                vector=embedding,
+                payload={
+                    "text": c.text,
+                    "document_id": document_id,
+                    "company_id": company_id or "",
+                    "user_id": user_id,
+                    "filename": filename,
+                    "doc_type": doc_type,
+                    "department_id": department_id or "",
+                    "department": department or department_id or "",
+                    "visibility": visibility,
+                    "h1": c.h1 or "",
+                    "h2": c.h2 or "",
+                },
+            )
+            for c, embedding in zip(chunks, embeddings)
         ]
-        self._collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
-            documents=[c.text for c in chunks],
-            metadatas=metadatas,
-        )
+        self._client.upsert(_COLLECTION_NAME, points=points)
         return len(chunks)
 
     def delete_by_document(self, document_id: str) -> None:
-        self._collection.delete(where={"document_id": document_id})
+        if not self._client.collection_exists(_COLLECTION_NAME):
+            return
+        self._client.delete(
+            _COLLECTION_NAME,
+            points_selector=models.FilterSelector(filter=_to_filter({"document_id": document_id})),
+        )
 
     def query(self, query_embedding: list[float], *, top_k: int = 5, where: dict | None = None) -> list[dict]:
-        results = self._collection.query(query_embeddings=[query_embedding], n_results=top_k, where=where)
-        matches = []
-        for id_, text, meta in zip(results["ids"][0], results["documents"][0], results["metadatas"][0]):
-            matches.append({"id": id_, "text": text, **meta})
-        return matches
+        if not self._client.collection_exists(_COLLECTION_NAME):
+            return []
+        points = self._client.query_points(
+            _COLLECTION_NAME, query=query_embedding, query_filter=_to_filter(where), limit=top_k
+        ).points
+        return [{"id": str(p.id), **p.payload} for p in points]
 
     def keyword_query(self, query: str, *, top_k: int = 5, where: dict | None = None) -> list[dict]:
         # ponytail: BM25 over the (filtered) corpus at query time - no second index to keep in
         # sync with ingest/delete. Ceiling is a few tens of thousands of chunks; past that,
-        # move the sparse side to Postgres tsvector or a real BM25 index.
-        results = self._collection.get(where=where, include=["documents", "metadatas"])
-        documents = results["documents"]
-        if not documents:
+        # move the sparse side to Qdrant sparse vectors (BM25 via fastembed).
+        if not self._client.collection_exists(_COLLECTION_NAME):
             return []
-        scored = zip(_bm25_scores(query, documents), results["ids"], documents, results["metadatas"])
-        ranked = sorted((s for s in scored if s[0] > 0), key=lambda s: s[0], reverse=True)
-        return [{"id": id_, "text": text, **meta} for _, id_, text, meta in ranked[:top_k]]
+        records, offset = [], None
+        while True:
+            page, offset = self._client.scroll(
+                _COLLECTION_NAME, scroll_filter=_to_filter(where), limit=1000, offset=offset
+            )
+            records.extend(page)
+            if offset is None:
+                break
+        if not records:
+            return []
+        scores = _bm25_scores(query, [r.payload["text"] for r in records])
+        ranked = sorted((s for s in zip(scores, records) if s[0] > 0), key=lambda s: s[0], reverse=True)
+        return [{"id": str(r.id), **r.payload} for _, r in ranked[:top_k]]
 
 
 @lru_cache

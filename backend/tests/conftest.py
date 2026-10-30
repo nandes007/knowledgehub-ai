@@ -15,9 +15,11 @@ from app.services.auth import create_access_token, decode_access_token, hash_pas
 
 
 @pytest.fixture(autouse=True)
-def _no_real_s3(monkeypatch):
-    """A developer's .env may set S3_BUCKET; tests must never touch the real bucket."""
+def _no_real_services(monkeypatch):
+    """A developer's .env may point at the real S3 bucket or Qdrant server; tests
+    must never touch either."""
     monkeypatch.setattr(settings, "s3_bucket", "")
+    monkeypatch.setattr(settings, "qdrant_url", "")
 
 
 @pytest.fixture

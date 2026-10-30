@@ -24,10 +24,12 @@ out/
 
 # data volumes (local dev)
 backend/.chroma/
+.qdrant/
 backend/uploads/
 
 # eval indexes (rebuilt from evals/corpus on demand)
 backend/evals/.chroma-eval*/
+backend/evals/.qdrant-eval*/
 
 # editors / os
 .DS_Store

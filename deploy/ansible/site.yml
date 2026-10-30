@@ -50,6 +50,14 @@
           DNS=2a00:1098:2b::1 2a00:1098:2c::1 2a01:4f8:c2c:123f::1
           Domains=~.
 
+    # Flipping dns64_enabled off must undo the override, not just stop writing it.
+    - name: Remove the DNS64 resolver override
+      when: not dns64_enabled | bool
+      notify: Restart resolved
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d/dns64.conf
+        state: absent
+
     - name: Apply resolver change now
       ansible.builtin.meta: flush_handlers
 

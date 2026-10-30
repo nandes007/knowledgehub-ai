@@ -9,9 +9,10 @@ all:
     app_dir: /home/nandes/knowledgehub-ai
     ssh_pubkey_file: ~/.ssh/id_ed25519.pub
 
-    # IPv6-only host: Docker Hub is IPv4-only, so image pulls need DNS64/NAT64.
-    # Set false only if the server turns out to have working IPv4 egress.
-    dns64_enabled: true
+    # Only for an IPv6-only host, where IPv4-only services (Docker Hub) need
+    # DNS64/NAT64. The host now has IPv4 egress (default route via 10.0.1.1),
+    # and the public DNS64 resolvers were timing out lookups, failing deploys.
+    dns64_enabled: false
 
     # --- Self-hosted PostgreSQL (postgres.yml) ---
     db_name: knowledgehub

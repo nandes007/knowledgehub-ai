@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { MessageBubble } from "./MessageBubble";
-import { SourceList } from "./SourceList";
 import { ChatPanel } from "./ChatPanel";
 
 // Mock next/navigation
@@ -77,78 +76,21 @@ describe("Chat Experience Components", () => {
       expect(html).not.toContain("bg-user-bubble");
     });
 
-    it("renders citations when sources are provided", () => {
+    it("does not show sources under the answer", () => {
       const html = renderToString(
         createElement(MessageBubble, {
           message: {
             id: "msg-4",
             role: "assistant",
-            content: "Refer to documentation.",
+            content: "Hi! How can I help?",
             streaming: false,
-            sources: [
-              {
-                document_id: "doc-1",
-                filename: "handbook.pdf",
-                chunk_preview: "Company policy details...",
-              },
-            ],
+            sources: [{ document_id: "doc-1", filename: "handbook.pdf", chunk_preview: "Company policy..." }],
           },
         }),
       );
 
-      expect(html).toContain("handbook.pdf");
-      expect(html).toContain("Company policy details...");
-      expect(html).toContain("text-gold");
-      expect(html).toContain("bg-gold-muted");
-    });
-  });
-
-  describe("SourceList", () => {
-    it("returns null when sources list is empty", () => {
-      const html = renderToString(createElement(SourceList, { sources: [] }));
-      expect(html).toBe("");
-    });
-
-    it("renders citation pills with stamp-in animation and expandable dark card preview", () => {
-      const html = renderToString(
-        createElement(SourceList, {
-          sources: [
-            {
-              document_id: "doc-1",
-              filename: "guide.md",
-              chunk_preview: "First paragraph preview",
-            },
-            {
-              document_id: "doc-2",
-              filename: "spec.docx",
-              chunk_preview: "Second paragraph preview",
-            },
-          ],
-        }),
-      );
-
-      expect(html).toContain("guide.md");
-      expect(html).toContain("spec.docx");
-      expect(html).toContain("animate-stamp-in");
-      expect(html).toContain("bg-surface-raised");
-      expect(html).toContain("max-w-md");
-    });
-
-    it("groups chunks from the same document into one pill", () => {
-      const html = renderToString(
-        createElement(SourceList, {
-          sources: [
-            { document_id: "doc-1", filename: "aml.md", chunk_preview: "Chunk A" },
-            { document_id: "doc-1", filename: "aml.md", chunk_preview: "Chunk B" },
-            { document_id: "doc-2", filename: "pep.md", chunk_preview: "Chunk C" },
-          ],
-        }),
-      );
-
-      expect(html.match(/<summary/g)).toHaveLength(2);
-      expect(html).toContain("2 sections");
-      expect(html).toContain("Chunk A");
-      expect(html).toContain("Chunk B");
+      expect(html).toContain("Hi! How can I help?");
+      expect(html).not.toContain("handbook.pdf");
     });
   });
 

@@ -137,7 +137,7 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
             autoFocus
             placeholder="Ask anything about your company's knowledge base..."
             rows={1}
-            className="flex-1 resize-none bg-transparent px-3 py-1.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+            className="flex-1 resize-none bg-transparent px-3 py-1.5 text-base text-text-primary md:text-sm placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
             style={{ maxHeight: `${24 * 5}px` }}
           />
           <button

@@ -43,7 +43,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold disabled:opacity-50 ${className}`}
+      className={`h-10 w-full rounded-lg border border-border bg-surface-input px-3 py-2 text-base text-text-primary md:text-sm placeholder:text-text-tertiary focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold disabled:opacity-50 ${className}`}
     />
   );
 }

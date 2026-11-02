@@ -332,7 +332,7 @@ export function Sidebar() {
                               }
                             }}
                             onBlur={() => submitRename(conversation.id)}
-                            className="w-full bg-transparent text-sm text-text-primary outline-none focus:outline-none"
+                            className="w-full bg-transparent text-base text-text-primary md:text-sm outline-none focus:outline-none"
                             aria-label="Rename conversation"
                           />
                         </div>

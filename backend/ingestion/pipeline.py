@@ -10,7 +10,7 @@ from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.chunk import chunk_markdown
 from ingestion.convert import convert_to_markdown
 from ingestion.index import VectorStore, get_vector_store
-from ingestion.ocr import IMAGE_EXTENSIONS, image_to_markdown, pdf_to_markdown
+from ingestion.ocr import IMAGE_EXTENSIONS, image_to_markdown, office_to_markdown, pdf_to_markdown
 
 _MIN_EXTRACTED_CHARS = 20
 
@@ -38,6 +38,8 @@ def ingest_file(
         text = image_to_markdown(file_path, llm)
     elif suffix == ".pdf":
         text = pdf_to_markdown(file_path, llm)
+    elif suffix in (".docx", ".pptx"):
+        text = office_to_markdown(file_path, llm)
     else:
         text = convert_to_markdown(file_path)
     if len(text.strip()) < _MIN_EXTRACTED_CHARS:

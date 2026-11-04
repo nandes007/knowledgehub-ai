@@ -23,7 +23,7 @@ The project addresses a common problem: important knowledge is often scattered a
 
 ## What it does
 
-- Uploads PDF, DOCX, PPTX, and Markdown files, plus scanned PDFs and images (PNG, JPG, WEBP) read by a vision model.
+- Uploads PDF, DOCX, PPTX, and Markdown files, plus scanned PDFs and images (PNG, JPG, WEBP). A vision model reads scans, PDF pages with pictures, and images embedded in DOCX/PPTX.
 - Converts, chunks, embeds, and indexes documents in the background.
 - Combines semantic search with BM25 keyword search and reciprocal rank fusion.
 - Streams answers to the browser with Server-Sent Events (SSE).

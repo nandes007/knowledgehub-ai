@@ -152,7 +152,7 @@ def preview_document(document_id: uuid.UUID, session: SessionDep, current_user: 
         if media_type:
             return Response(file_path.read_bytes(), media_type=media_type)
         try:
-            text = convert_to_markdown(file_path)
+            text = convert_to_markdown(file_path, keep_data_uris=True)  # show embedded images
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(text, media_type="text/markdown; charset=utf-8")

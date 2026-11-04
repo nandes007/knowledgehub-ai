@@ -94,6 +94,22 @@ describe("Chat Experience Components", () => {
       expect(html).not.toContain("| Hari |");
     });
 
+    it("keeps embedded raster data-URI images but still strips script URLs", () => {
+      const html = renderToString(
+        createElement(MessageBubble, {
+          message: {
+            id: "msg-img",
+            role: "assistant",
+            content: "![query](data:image/png;base64,iVBORw0KGgo=) [x](javascript:alert(1))",
+            streaming: false,
+          },
+        }),
+      );
+
+      expect(html).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+      expect(html).not.toContain("javascript:");
+    });
+
     it("does not show sources under the answer", () => {
       const html = renderToString(
         createElement(MessageBubble, {

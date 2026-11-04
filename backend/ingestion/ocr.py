@@ -1,10 +1,14 @@
-"""Vision-model OCR for scanned PDFs, PDF pages with pictures, and image uploads.
+"""Vision-model OCR for scanned PDFs, PDF pages with pictures, images embedded in
+DOCX/PPTX, and image uploads.
 
 Pages that need it are rendered to PNG and transcribed to markdown by the vision
 model, one call per page, so the result flows through the normal chunk/embed path.
 """
 
+import base64
+import binascii
 import io
+import re
 from pathlib import Path
 
 import pypdfium2 as pdfium
@@ -25,6 +29,10 @@ MAX_PAGES = 50
 # decoration (logo, icon) and skipped; lower it if small screenshots go unread.
 _MIN_PICTURE_AREA = 0.05
 _MIN_TEXT_CHARS = 20
+# ponytail: tuning knob. Embedded DOCX/PPTX images below this many pixels (about 150x150)
+# are treated as icons and dropped instead of sent to the vision model.
+_MIN_EMBEDDED_PIXELS = 150 * 150
+_DATA_URI_IMAGE = re.compile(r"!\[[^\]]*\]\(data:image/[\w.+-]+;base64,([A-Za-z0-9+/=]+)\)")
 
 
 def _to_png(image: Image.Image) -> bytes:
@@ -82,3 +90,34 @@ def pdf_to_markdown(file_path: Path, llm: LLMProvider) -> str:
     finally:
         pdf.close()
     return "\n\n".join(part.strip() for part in parts if part.strip())
+
+
+def office_to_markdown(file_path: Path, llm: LLMProvider) -> str:
+    """DOCX/PPTX text with each embedded picture replaced, in place, by its transcription."""
+    text = convert_to_markdown(file_path, keep_data_uris=True)
+    images = _DATA_URI_IMAGE.findall(text)
+    if len(set(images)) > MAX_PAGES:
+        raise ValueError(
+            f"This document has {len(set(images))} images to read; at most {MAX_PAGES} are supported. "
+            "Split it and upload the parts."
+        )
+    transcribed: dict[str, str] = {}  # the same picture repeated (e.g. a logo) is read once
+
+    def replace(match: re.Match) -> str:
+        data = match[1]
+        if data not in transcribed:
+            transcribed[data] = _transcribe_embedded(data, llm)
+        return f"\n\n{transcribed[data]}\n\n" if transcribed[data] else ""
+
+    return _DATA_URI_IMAGE.sub(replace, text)
+
+
+def _transcribe_embedded(data: str, llm: LLMProvider) -> str:
+    try:
+        with Image.open(io.BytesIO(base64.b64decode(data))) as image:
+            if image.width * image.height < _MIN_EMBEDDED_PIXELS:
+                return ""
+            png = _to_png(image)
+    except (UnidentifiedImageError, OSError, binascii.Error):
+        return ""  # e.g. Windows EMF/WMF clip art Pillow can't open: skip it, keep the document
+    return llm.transcribe_image(png).strip()

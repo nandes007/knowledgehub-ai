@@ -4,9 +4,11 @@ import io
 import pypdfium2 as pdfium
 import pytest
 from PIL import Image
+from pptx import Presentation
+from pptx.util import Inches
 
 from ingestion.index import VectorStore
-from ingestion.ocr import MAX_PAGES, image_to_markdown, pdf_to_markdown
+from ingestion.ocr import MAX_PAGES, image_to_markdown, office_to_markdown, pdf_to_markdown
 from ingestion.pipeline import ingest_file
 
 _TEXT = "Employees get 20 days of PTO per year."
@@ -129,3 +131,24 @@ def test_corrupt_image_and_oversized_scan_give_clear_errors(tmp_path):
     with pytest.raises(ValueError, match="at most"):
         pdf_to_markdown(big, llm)
     assert llm.pages == []
+
+
+def test_office_images_are_transcribed_in_place_and_icons_skipped(tmp_path):
+    screenshot, icon = tmp_path / "query.png", tmp_path / "icon.png"
+    Image.new("RGB", (800, 400), "navy").save(screenshot)
+    Image.new("RGB", (32, 32), "red").save(icon)
+    deck = Presentation()
+    for title, picture in [("Query used", screenshot), ("Same query again", screenshot), ("Contact", icon)]:
+        slide = deck.slides.add_slide(deck.slide_layouts[5])
+        slide.shapes.title.text = title
+        slide.shapes.add_picture(str(picture), Inches(1), Inches(2))  # below the title
+    file_path = tmp_path / "deck.pptx"
+    deck.save(file_path)
+    llm = _VisionLLM()
+
+    text = office_to_markdown(file_path, llm)
+
+    assert len(llm.pages) == 1  # repeated screenshot read once, icon skipped
+    assert text.count("dispatchSync();") == 2
+    assert text.index("Query used") < text.index("dispatchSync();") < text.index("Contact")
+    assert "data:image" not in text  # no base64 left to pollute chunks

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { deleteDocument, listDocuments, type Document } from "../lib/api";
 import { StatusPill, Card, Input } from "./ui";
+import { DocumentPreview } from "./DocumentPreview";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -72,6 +73,7 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   const refetch = useCallback(() => {
     listDocuments()
@@ -149,6 +151,10 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
 
       {deleteError && <p className="text-sm text-status-void">{deleteError}</p>}
 
+      {previewDoc && (
+        <DocumentPreview documentId={previewDoc.id} filename={previewDoc.filename} onClose={() => setPreviewDoc(null)} />
+      )}
+
       {/* Document list */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
@@ -158,7 +164,14 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
             <Card key={doc.id} className="group flex items-center gap-3 px-4 py-3 transition-colors duration-120 hover:border-border-hover">
               <FileIcon filename={doc.filename} />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text-primary">{doc.filename}</p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(doc)}
+                  className="block max-w-full truncate rounded text-left text-sm font-medium text-text-primary transition-colors duration-120 hover:text-gold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                  title="Preview"
+                >
+                  {doc.filename}
+                </button>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
                   <StatusPill status={doc.status} />
                   <span className="text-xs text-text-secondary">

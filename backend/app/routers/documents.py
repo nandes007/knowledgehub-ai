@@ -2,7 +2,7 @@ import hashlib
 from pathlib import Path
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
 from sqlmodel import select
@@ -12,10 +12,12 @@ from app.db import get_engine
 from app.deps import AdminDep, CurrentUserDep, SessionDep
 from app.models.department import Department
 from app.models.document import Document
+from app.models.user import User
 from app.rate_limit import limiter
 from app.schemas.document import DocumentRead, DocumentSummary
 from app.services import storage
 from app.services.llm import LLMProvider, get_llm_provider
+from ingestion.convert import convert_to_markdown
 from ingestion.index import VectorStore, get_vector_store
 from ingestion.ocr import IMAGE_EXTENSIONS
 from ingestion.pipeline import ingest_document
@@ -24,6 +26,27 @@ router = APIRouter()
 
 _SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md", *IMAGE_EXTENSIONS}
 _VISIBILITIES = {"company", "department"}
+# Served as-is for the browser to render; everything else is previewed as extracted markdown.
+# Keyed on the stored extension, never the client-supplied content type.
+_NATIVE_PREVIEW_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+def _visible_documents(user: User):
+    statement = select(Document).where(Document.company_id == user.company_id)
+    if user.role in ("admin", "superadmin"):
+        return statement
+    if user.department_id is not None:
+        return statement.where(
+            (Document.visibility == "company")
+            | ((Document.visibility == "department") & (Document.department_id == user.department_id))
+        )
+    return statement.where(Document.visibility == "company")
 
 
 @router.post("/documents", response_model=DocumentRead, status_code=202)
@@ -113,26 +136,26 @@ def list_documents(session: SessionDep, current_user: CurrentUserDep) -> list[Do
     if current_user.company_id is None:
         return []
 
-    if current_user.role in ("admin", "superadmin"):
-        statement = select(Document).where(Document.company_id == current_user.company_id)
-    else:
-        if current_user.department_id is not None:
-            statement = select(Document).where(
-                Document.company_id == current_user.company_id,
-                (Document.visibility == "company")
-                | (
-                    (Document.visibility == "department")
-                    & (Document.department_id == current_user.department_id)
-                ),
-            )
-        else:
-            statement = select(Document).where(
-                Document.company_id == current_user.company_id,
-                Document.visibility == "company",
-            )
+    return list(session.exec(_visible_documents(current_user).order_by(Document.created_at.desc())))
 
-    statement = statement.order_by(Document.created_at.desc())
-    return list(session.exec(statement))
+
+@router.get("/documents/{document_id}/preview")
+def preview_document(document_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> Response:
+    document = None
+    if current_user.company_id is not None:
+        document = session.exec(_visible_documents(current_user).where(Document.id == document_id)).first()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    with storage.local_copy(document.file_path) as file_path:
+        media_type = _NATIVE_PREVIEW_TYPES.get(file_path.suffix.lower())
+        if media_type:
+            return Response(file_path.read_bytes(), media_type=media_type)
+        try:
+            text = convert_to_markdown(file_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(text, media_type="text/markdown; charset=utf-8")
 
 
 @router.delete("/documents/{document_id}", status_code=204)

@@ -381,3 +381,60 @@ def test_delete_cross_company_document_returns_404(db_engine, tmp_path, monkeypa
         assert del_res.status_code == 404
     finally:
         _clear_overrides()
+
+
+def test_preview_serves_images_as_is_and_other_formats_as_markdown(
+    admin_client, other_company_client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    _override_llm(_FakeLLM())
+    _override_store(VectorStore(persist_dir=str(tmp_path / "qdrant")))
+    png = b"\x89PNG\r\n\x1a\n fake image bytes"
+    try:
+        md_id = admin_client.post(
+            "/documents", files={"file": ("policy.md", b"# Vacation\n\nEmployees get 20 days.", "text/markdown")}
+        ).json()["id"]
+        # A spoofed client content type must not decide how the file is served.
+        png_id = admin_client.post("/documents", files={"file": ("scan.png", png, "text/html")}).json()["id"]
+
+        md = admin_client.get(f"/documents/{md_id}/preview")
+        image = admin_client.get(f"/documents/{png_id}/preview")
+        cross_company = other_company_client.get(f"/documents/{md_id}/preview")
+    finally:
+        _clear_overrides()
+
+    assert md.status_code == 200
+    assert md.headers["content-type"].startswith("text/markdown")
+    assert "Employees get 20 days." in md.text
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/png"
+    assert image.content == png
+    assert cross_company.status_code == 404
+
+
+def test_preview_hides_department_documents_from_members_outside_it(
+    admin_client, member_client, db_engine, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    _override_llm(_FakeLLM())
+    _override_store(VectorStore(persist_dir=str(tmp_path / "qdrant")))
+    with Session(db_engine) as session:
+        company = session.exec(select(Company).where(Company.name == "Test Company")).one()
+        dept = Department(name="Finance", company_id=company.id)
+        session.add(dept)
+        session.commit()
+        dept_id = str(dept.id)
+    try:
+        doc_id = admin_client.post(
+            "/documents",
+            files={"file": ("salaries.md", b"# Salaries\n\nConfidential bands.", "text/markdown")},
+            data={"visibility": "department", "department_id": dept_id},
+        ).json()["id"]
+
+        as_admin = admin_client.get(f"/documents/{doc_id}/preview")
+        as_member = member_client.get(f"/documents/{doc_id}/preview")
+    finally:
+        _clear_overrides()
+
+    assert as_admin.status_code == 200
+    assert as_member.status_code == 404

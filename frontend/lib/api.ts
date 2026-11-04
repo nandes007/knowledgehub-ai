@@ -201,6 +201,25 @@ export async function listDocuments(): Promise<Document[]> {
   }));
 }
 
+export type DocumentPreview =
+  | { kind: "markdown"; text: string }
+  | { kind: "pdf"; url: string }
+  | { kind: "image"; url: string };
+
+// PDFs and images come back as the original file, rendered by the browser from a blob URL
+// (the caller must revoke it); other formats come back as extracted markdown.
+export async function getDocumentPreview(documentId: string): Promise<DocumentPreview> {
+  const response = await apiFetch(`${API_URL}/documents/${documentId}/preview`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail ?? `Couldn't load preview: ${response.status}`);
+  }
+  const type = response.headers.get("content-type") ?? "";
+  if (type.startsWith("text/markdown")) return { kind: "markdown", text: await response.text() };
+  const url = URL.createObjectURL(await response.blob());
+  return type === "application/pdf" ? { kind: "pdf", url } : { kind: "image", url };
+}
+
 export type UploadedDocument = {
   id: string;
   filename: string;

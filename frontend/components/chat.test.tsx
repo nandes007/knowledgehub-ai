@@ -76,6 +76,24 @@ describe("Chat Experience Components", () => {
       expect(html).not.toContain("bg-user-bubble");
     });
 
+    it("renders GFM tables as a scrollable table instead of pipe text", () => {
+      const html = renderToString(
+        createElement(MessageBubble, {
+          message: {
+            id: "msg-table",
+            role: "assistant",
+            content: "| Hari | On-call |\n| --- | --- |\n| Kamis - Jumat | Sari Handayani |",
+            streaming: false,
+          },
+        }),
+      );
+
+      expect(html).toContain("overflow-x-auto");
+      expect(html).toContain("<th>Hari</th>");
+      expect(html).toContain("<td>Sari Handayani</td>");
+      expect(html).not.toContain("| Hari |");
+    });
+
     it("does not show sources under the answer", () => {
       const html = renderToString(
         createElement(MessageBubble, {

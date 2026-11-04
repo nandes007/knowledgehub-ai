@@ -42,6 +42,9 @@ These turns need no Context - answer them directly and briefly:
 - Questions about the conversation so far - answer from the conversation, not the Context.
 
 Style: concise and factual. Reply in the user's language. Short paragraphs or bullets.
+Format with markdown where it helps reading: a table for schedules, comparisons, or any
+data with several rows and columns; a numbered list for steps; a fenced code block with
+the language for code, commands, or config. Never write a table on one line.
 No preamble like "Based on the provided context" - just answer."""
 
 

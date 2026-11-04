@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { uploadDocument, type Visibility } from "../lib/api";
 import { Label, Input } from "./ui";
 
-const ACCEPTED_TYPES = ".pdf,.docx,.pptx,.md";
+const ACCEPTED_TYPES = ".pdf,.docx,.pptx,.md,.png,.jpg,.jpeg,.webp";
 
 function IconCloudUpload() {
   return (
@@ -112,7 +112,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
         ) : (
           "Drag and drop files here, or click to browse"
         )}
-        <span className="text-xs text-text-tertiary">PDF, DOCX, PPTX, MD</span>
+        <span className="text-xs text-text-tertiary">PDF, DOCX, PPTX, MD, PNG, JPG, WEBP</span>
         {error && <p className="mt-1 text-status-void">{error}</p>}
       </div>
     </div>

@@ -19,6 +19,10 @@ const EXT_COLORS: Record<string, string> = {
   pptx: "#F97316",
   ppt: "#F97316",
   md: "#8B8B8E",
+  png: "#10B981",
+  jpg: "#10B981",
+  jpeg: "#10B981",
+  webp: "#10B981",
 };
 
 export function FileIcon({ filename }: { filename: string }) {

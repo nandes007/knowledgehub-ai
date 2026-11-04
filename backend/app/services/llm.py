@@ -1,3 +1,4 @@
+import base64
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
@@ -9,6 +10,12 @@ from openai import OpenAI
 from app.config import settings
 
 _logger = logging.getLogger("app.llm")
+
+_OCR_PROMPT = (
+    "Transcribe all text in this document page image as GitHub-flavored markdown. "
+    "Keep headings, lists and tables as markdown structure. Copy the text as written; "
+    "do not summarize, translate, or add commentary. If the page has no text, reply with nothing."
+)
 
 
 @dataclass
@@ -37,6 +44,9 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None) -> Iterator[str]: ...
+
+    @abstractmethod
+    def transcribe_image(self, png: bytes) -> str: ...
 
 
 class _OpenAIClientLike(Protocol):
@@ -80,6 +90,24 @@ class OpenAIProvider(LLMProvider):
             prompt_tokens=usage.prompt_tokens if usage else None,
             completion_tokens=usage.completion_tokens if usage else None,
         )
+
+    def transcribe_image(self, png: bytes) -> str:
+        url = f"data:image/png;base64,{base64.b64encode(png).decode()}"
+        response = self._client.chat.completions.create(
+            model=settings.vision_model,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": _OCR_PROMPT},
+                {"role": "user", "content": [{"type": "image_url", "image_url": {"url": url, "detail": "high"}}]},
+            ],
+        )
+        _log_llm_call(
+            call_type="ocr",
+            model=settings.vision_model,
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+        )
+        return response.choices[0].message.content or ""
 
 
 def get_llm_provider() -> LLMProvider:

@@ -17,11 +17,12 @@ from app.schemas.document import DocumentRead, DocumentSummary
 from app.services import storage
 from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
+from ingestion.ocr import IMAGE_EXTENSIONS
 from ingestion.pipeline import ingest_document
 
 router = APIRouter()
 
-_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md"}
+_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md", *IMAGE_EXTENSIONS}
 _VISIBILITIES = {"company", "department"}
 
 
@@ -52,7 +53,7 @@ async def upload_document(
     if extension not in _SUPPORTED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{extension or 'unknown'}'. Supported: PDF, DOCX, PPTX, MD.",
+            detail=f"Unsupported file type '{extension or 'unknown'}'. Supported: PDF, DOCX, PPTX, MD, PNG, JPG, WEBP.",
         )
 
     if visibility not in _VISIBILITIES:

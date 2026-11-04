@@ -10,6 +10,7 @@ from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.chunk import chunk_markdown
 from ingestion.convert import convert_to_markdown
 from ingestion.index import VectorStore, get_vector_store
+from ingestion.ocr import IMAGE_EXTENSIONS, ocr_to_markdown
 
 _MIN_EXTRACTED_CHARS = 20
 
@@ -32,11 +33,16 @@ def ingest_file(
     llm = llm or get_llm_provider()
     vector_store = vector_store or get_vector_store()
 
-    text = convert_to_markdown(file_path)
+    suffix = file_path.suffix.lower()
+    if suffix in IMAGE_EXTENSIONS:
+        text = ocr_to_markdown(file_path, llm)
+    else:
+        text = convert_to_markdown(file_path)
+        # ponytail: whole-document check, so a PDF mixing text and scanned pages skips OCR.
+        if suffix == ".pdf" and len(text.strip()) < _MIN_EXTRACTED_CHARS:
+            text = ocr_to_markdown(file_path, llm)
     if len(text.strip()) < _MIN_EXTRACTED_CHARS:
-        raise ValueError(
-            "This file has no readable text — it may be a scanned PDF or image that needs OCR."
-        )
+        raise ValueError("This file has no readable text.")
     # chunk_size is an override for the eval harness; production uses the default.
     chunks = chunk_markdown(text, **({"chunk_size": chunk_size} if chunk_size else {}))
     embeddings = llm.embed_texts([c.text for c in chunks])

@@ -23,7 +23,7 @@ The project addresses a common problem: important knowledge is often scattered a
 
 ## What it does
 
-- Uploads PDF, DOCX, PPTX, and Markdown files.
+- Uploads PDF, DOCX, PPTX, and Markdown files, plus scanned PDFs and images (PNG, JPG, WEBP) read by a vision model.
 - Converts, chunks, embeds, and indexes documents in the background.
 - Combines semantic search with BM25 keyword search and reciprocal rank fusion.
 - Streams answers to the browser with Server-Sent Events (SSE).
@@ -334,7 +334,7 @@ The GitHub issue tracker is the current source for proposed work and contributor
 
 - Qdrant runs on the same server as the app, so that server is still a single point of failure for search.
 - Background ingestion is not resumed automatically if the process stops mid-job.
-- Scanned or image-only documents require OCR before upload.
+- Vision OCR runs on whole documents only: a PDF that mixes text pages with scanned pages indexes just the text pages.
 - The evaluation corpus is synthetic and still small compared with a production company knowledge base.
 - The project currently supports OpenAI as its LLM and embedding provider.
 

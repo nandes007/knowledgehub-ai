@@ -12,9 +12,15 @@ from app.config import settings
 _logger = logging.getLogger("app.llm")
 
 _OCR_PROMPT = (
-    "Transcribe all text in this document page image as GitHub-flavored markdown. "
-    "Keep headings, lists and tables as markdown structure. Copy the text as written; "
-    "do not summarize, translate, or add commentary. If the page has no text, reply with nothing."
+    "Transcribe this document page image as GitHub-flavored markdown, top to bottom.\n"
+    "- Copy all text as written, including text inside screenshots and diagrams. "
+    "Do not summarize, translate, or add commentary.\n"
+    "- Keep headings, lists and tables as markdown structure. Put code in fenced code blocks "
+    "with the language, if known.\n"
+    "- Where a diagram, chart, photo or UI screenshot shows something the text alone does not "
+    "(flows, connections, trends, layout), add a short description in place, on its own line, "
+    "starting with \"_Image:_\". Skip logos, icons and decoration.\n"
+    "- If the page is blank, reply with nothing."
 )
 
 
@@ -55,8 +61,17 @@ class _OpenAIClientLike(Protocol):
 
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, client: _OpenAIClientLike | None = None) -> None:
+    def __init__(
+        self, client: _OpenAIClientLike | None = None, vision_client: _OpenAIClientLike | None = None
+    ) -> None:
         self._client = client or OpenAI(api_key=settings.openai_api_key)
+        # OCR may run on any OpenAI-compatible endpoint (e.g. OpenRouter); it only produces text,
+        # so it is independent of the embedding model that the index depends on.
+        self._vision_client = vision_client or (
+            OpenAI(base_url=settings.vision_base_url, api_key=settings.vision_api_key)
+            if settings.vision_base_url
+            else self._client
+        )
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         response = self._client.embeddings.create(model=settings.embedding_model, input=texts)
@@ -93,7 +108,7 @@ class OpenAIProvider(LLMProvider):
 
     def transcribe_image(self, png: bytes) -> str:
         url = f"data:image/png;base64,{base64.b64encode(png).decode()}"
-        response = self._client.chat.completions.create(
+        response = self._vision_client.chat.completions.create(
             model=settings.vision_model,
             temperature=0,
             messages=[

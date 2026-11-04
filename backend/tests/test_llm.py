@@ -115,3 +115,22 @@ def test_get_llm_provider_rejects_unknown_provider(monkeypatch):
 
     with pytest.raises(ValueError, match="Unsupported LLM_PROVIDER"):
         llm_module.get_llm_provider()
+
+
+def test_transcribe_image_uses_the_vision_client_and_model(monkeypatch):
+    monkeypatch.setattr(settings, "vision_model", "google/gemini-3.1-flash-lite")
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="# Page"))],
+            usage=SimpleNamespace(prompt_tokens=900, completion_tokens=40),
+        )
+
+    vision_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    provider = OpenAIProvider(client=_FakeOpenAIClient(), vision_client=vision_client)
+
+    assert provider.transcribe_image(b"png-bytes") == "# Page"
+    assert calls[0]["model"] == "google/gemini-3.1-flash-lite"
+    assert calls[0]["messages"][1]["content"][0]["image_url"]["url"].startswith("data:image/png;base64,")

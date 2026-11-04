@@ -16,8 +16,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-large"
     chat_model: str = "gpt-4o-mini"
-    # Reads scanned PDFs and images; must accept image input.
+    # Reads scanned PDFs and images; must accept image input. Set VISION_BASE_URL to use any
+    # OpenAI-compatible endpoint (e.g. https://openrouter.ai/api/v1); leave empty to use OpenAI.
     vision_model: str = "gpt-4o-mini"
+    vision_base_url: str = ""
+    vision_api_key: str = ""
     cors_origins: str = "http://localhost:3000"
     upload_dir: str = "./uploads"
     # Set S3_BUCKET to store uploads in S3; leave empty to use upload_dir.

@@ -13,6 +13,10 @@ supabase_db_url: "postgresql+psycopg://postgres:PASSWORD@db.REF.supabase.co:5432
 postgres_password: "CHANGEME"
 
 openai_api_key: "sk-..."
+# Optional: run vision OCR through OpenRouter instead of OpenAI.
+# vision_base_url: "https://openrouter.ai/api/v1"
+# vision_model: "google/gemini-3.1-flash-lite"
+# vision_api_key: "sk-or-..."
 
 # Reusable auth key for tailscale.yml, from
 # https://login.tailscale.com/admin/settings/keys

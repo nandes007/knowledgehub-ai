@@ -1,17 +1,17 @@
-"""Vision-model OCR for scanned PDFs and image uploads.
+"""Vision-model OCR for scanned PDFs, PDF pages with pictures, and image uploads.
 
-Each page is rendered to a PNG and transcribed to markdown by the vision model,
-one call per page, so the result flows through the normal chunk/embed path.
+Pages that need it are rendered to PNG and transcribed to markdown by the vision
+model, one call per page, so the result flows through the normal chunk/embed path.
 """
 
 import io
-from collections.abc import Iterator
 from pathlib import Path
 
 import pypdfium2 as pdfium
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.services.llm import LLMProvider
+from ingestion.convert import convert_to_markdown
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -21,6 +21,10 @@ _RENDER_SCALE = 2
 _MAX_SIDE = 2048
 # Rejected, not truncated: a silently partial document is worse than an error.
 MAX_PAGES = 50
+# ponytail: tuning knob. A picture covering less of the page than this is treated as
+# decoration (logo, icon) and skipped; lower it if small screenshots go unread.
+_MIN_PICTURE_AREA = 0.05
+_MIN_TEXT_CHARS = 20
 
 
 def _to_png(image: Image.Image) -> bytes:
@@ -31,29 +35,50 @@ def _to_png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def page_images(file_path: Path) -> Iterator[bytes]:
-    """Yield one PNG per page: the image itself, or each rendered PDF page."""
-    if file_path.suffix.lower() != ".pdf":
-        try:
-            with Image.open(file_path) as image:
-                yield _to_png(image)
-        except (UnidentifiedImageError, OSError) as exc:
-            raise ValueError(f"Couldn't read '{file_path.name}' — the image may be corrupted.") from exc
-        return
+def image_to_markdown(file_path: Path, llm: LLMProvider) -> str:
+    try:
+        with Image.open(file_path) as image:
+            png = _to_png(image)
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError(f"Couldn't read '{file_path.name}' — the image may be corrupted.") from exc
+    return llm.transcribe_image(png).strip()
 
+
+def _has_picture(page: pdfium.PdfPage) -> bool:
+    width, height = page.get_size()
+    for obj in page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_IMAGE]):
+        left, bottom, right, top = obj.get_bounds()
+        if (right - left) * (top - bottom) >= _MIN_PICTURE_AREA * width * height:
+            return True
+    return False
+
+
+def pdf_to_markdown(file_path: Path, llm: LLMProvider) -> str:
+    """Text pages are read directly; pages with pictures go to the vision model whole.
+
+    A PDF with no text at all (a scan) is OCR'd on every page.
+    """
+    text = convert_to_markdown(file_path)  # also rejects corrupt PDFs with a clear error
     pdf = pdfium.PdfDocument(file_path)
     try:
-        if len(pdf) > MAX_PAGES:
+        if len(text.strip()) < _MIN_TEXT_CHARS:
+            ocr_pages = set(range(len(pdf)))
+        else:
+            ocr_pages = {i for i, page in enumerate(pdf) if _has_picture(page)}
+        if not ocr_pages:
+            return text  # plain text PDF: unchanged markitdown path, no vision cost
+        if len(ocr_pages) > MAX_PAGES:
             raise ValueError(
-                f"This scanned PDF has {len(pdf)} pages; OCR supports at most {MAX_PAGES}. Split it and upload the parts."
+                f"This PDF has {len(ocr_pages)} pages that need OCR; at most {MAX_PAGES} are supported. "
+                "Split it and upload the parts."
             )
-        for page in pdf:
-            yield _to_png(page.render(scale=_RENDER_SCALE).to_pil())
+        # ponytail: sequential calls, ~5s/page; run pages concurrently if big scans get slow.
+        parts = [
+            llm.transcribe_image(_to_png(page.render(scale=_RENDER_SCALE).to_pil()))
+            if i in ocr_pages
+            else page.get_textpage().get_text_range()
+            for i, page in enumerate(pdf)
+        ]
     finally:
         pdf.close()
-
-
-def ocr_to_markdown(file_path: Path, llm: LLMProvider) -> str:
-    # ponytail: sequential calls, ~5s/page; run pages concurrently if big scans get slow.
-    pages = (llm.transcribe_image(png) for png in page_images(file_path))
-    return "\n\n".join(text.strip() for text in pages if text.strip())
+    return "\n\n".join(part.strip() for part in parts if part.strip())

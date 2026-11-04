@@ -1,11 +1,15 @@
+import ctypes
 import io
 
+import pypdfium2 as pdfium
 import pytest
 from PIL import Image
 
 from ingestion.index import VectorStore
-from ingestion.ocr import MAX_PAGES, page_images
+from ingestion.ocr import MAX_PAGES, image_to_markdown, pdf_to_markdown
 from ingestion.pipeline import ingest_file
+
+_TEXT = "Employees get 20 days of PTO per year."
 
 
 class _VisionLLM:
@@ -17,7 +21,35 @@ class _VisionLLM:
 
     def transcribe_image(self, png: bytes) -> str:
         self.pages.append(png)
-        return f"# Page {len(self.pages)}\n\nEmployees get 20 days of PTO per year."
+        return f"OCR page {len(self.pages)}: ```php\ndispatchSync();\n```"
+
+
+def _add_text(pdf, page, text):
+    obj = pdfium.raw.FPDFPageObj_NewTextObj(pdf.raw, b"Helvetica", 12.0)
+    buffer = ctypes.create_string_buffer(text.encode("utf-16-le") + b"\0\0")
+    pdfium.raw.FPDFText_SetText(obj, ctypes.cast(buffer, ctypes.POINTER(pdfium.raw.FPDF_WCHAR)))
+    pdfium.raw.FPDFPageObj_Transform(obj, 1, 0, 0, 1, 50, 700)
+    pdfium.raw.FPDFPage_InsertObject(page.raw, obj)
+
+
+def _add_picture(pdf, page, width, height):
+    image = pdfium.PdfImage.new(pdf)
+    image.set_bitmap(pdfium.PdfBitmap.from_pil(Image.new("RGB", (50, 50), "gray")))
+    image.set_matrix(pdfium.PdfMatrix().scale(width, height).translate(50, 50))
+    page.insert_obj(image)
+
+
+def _pdf(path, pages):
+    """pages: list of (text or None, picture (w, h) in points or None)."""
+    pdf = pdfium.PdfDocument.new()
+    for text, picture in pages:
+        page = pdf.new_page(612, 792)
+        if text:
+            _add_text(pdf, page, text)
+        if picture:
+            _add_picture(pdf, page, *picture)
+        page.gen_content()
+    pdf.save(path)
 
 
 def _ingest(file_path, llm, tmp_path):
@@ -42,7 +74,39 @@ def test_image_upload_is_transcribed_by_the_vision_model(tmp_path):
     assert max(Image.open(io.BytesIO(llm.pages[0])).size) == 2048
 
 
-def test_scanned_pdf_falls_back_to_ocr_page_by_page(tmp_path):
+def test_mixed_pdf_ocrs_only_pages_with_pictures(tmp_path):
+    file_path = tmp_path / "guide.pdf"
+    _pdf(
+        file_path,
+        [
+            (_TEXT, None),  # text only: read directly
+            ("See the screenshot below.", (500, 150)),  # code screenshot: OCR
+            (_TEXT, (30, 30)),  # tiny logo: decoration, read directly
+        ],
+    )
+    llm = _VisionLLM()
+
+    text = pdf_to_markdown(file_path, llm)
+
+    assert len(llm.pages) == 1
+    assert text.count(_TEXT) == 2
+    assert "dispatchSync();" in text
+    assert text.index(_TEXT) < text.index("OCR page 1") < text.rindex(_TEXT)  # page order kept
+
+
+def test_text_only_pdf_and_markdown_never_reach_the_vision_model(tmp_path):
+    llm = _VisionLLM()
+    pdf_path = tmp_path / "policy.pdf"
+    _pdf(pdf_path, [(_TEXT, None)])
+    md_path = tmp_path / "policy.md"
+    md_path.write_text(f"# Policy\n\n{_TEXT}")
+
+    assert _TEXT in pdf_to_markdown(pdf_path, llm)
+    _ingest(md_path, llm, tmp_path)
+    assert llm.pages == []
+
+
+def test_scanned_pdf_is_ocrd_on_every_page(tmp_path):
     file_path = tmp_path / "scan.pdf"
     pages = [Image.new("RGB", (600, 800), "white") for _ in range(3)]
     pages[0].save(file_path, save_all=True, append_images=pages[1:])  # image-only PDF, no text layer
@@ -52,23 +116,16 @@ def test_scanned_pdf_falls_back_to_ocr_page_by_page(tmp_path):
     assert len(llm.pages) == 3
 
 
-def test_text_documents_never_reach_the_vision_model(tmp_path):
-    file_path = tmp_path / "policy.md"
-    file_path.write_text("# Policy\n\nEmployees get 20 days of PTO per year.")
-    llm = _VisionLLM()
-
-    _ingest(file_path, llm, tmp_path)
-    assert llm.pages == []
-
-
-def test_corrupt_image_and_oversized_pdf_give_clear_errors(tmp_path):
+def test_corrupt_image_and_oversized_scan_give_clear_errors(tmp_path):
     broken = tmp_path / "broken.png"
     broken.write_bytes(b"not an image")
     with pytest.raises(ValueError, match="image may be corrupted"):
-        list(page_images(broken))
+        image_to_markdown(broken, _VisionLLM())
 
     big = tmp_path / "big.pdf"
     pages = [Image.new("RGB", (10, 10)) for _ in range(MAX_PAGES + 1)]
     pages[0].save(big, save_all=True, append_images=pages[1:])
-    with pytest.raises(ValueError, match="OCR supports at most"):
-        list(page_images(big))
+    llm = _VisionLLM()
+    with pytest.raises(ValueError, match="at most"):
+        pdf_to_markdown(big, llm)
+    assert llm.pages == []

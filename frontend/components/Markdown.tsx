@@ -1,5 +1,7 @@
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isProtectedPath } from "@/lib/api";
+import { AuthImage } from "./AuthImage";
 
 // Wide tables scroll inside the bubble instead of stretching the chat on small screens.
 const markdownComponents: Components = {
@@ -9,6 +11,15 @@ const markdownComponents: Components = {
       <table {...props} />
     </div>
   ),
+  // Document pictures in answers are API paths behind auth.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- drop `node` so it is not spread onto the DOM
+  img: ({ node, src, alt, ...props }) =>
+    typeof src === "string" && isProtectedPath(src) ? (
+      <AuthImage src={src} alt={alt ?? ""} className="min-h-24 min-w-40" />
+    ) : (
+      // eslint-disable-next-line @next/next/no-img-element -- data URIs can't go through next/image
+      <img src={src} alt={alt} {...props} />
+    ),
 };
 
 // Embedded DOCX/PPTX images arrive as base64 data URIs, which react-markdown strips by default.

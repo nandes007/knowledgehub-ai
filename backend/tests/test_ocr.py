@@ -152,3 +152,84 @@ def test_office_images_are_transcribed_in_place_and_icons_skipped(tmp_path):
     assert text.count("dispatchSync();") == 2
     assert text.index("Query used") < text.index("dispatchSync();") < text.index("Contact")
     assert "data:image" not in text  # no base64 left to pollute chunks
+
+
+# --- Pictures kept for answers ---------------------------------------------------------
+
+
+def _deck(tmp_path):
+    screenshot, icon = tmp_path / "flow.png", tmp_path / "icon.png"
+    Image.new("RGB", (800, 400), "navy").save(screenshot)
+    Image.new("RGB", (32, 32), "red").save(icon)
+    deck = Presentation()
+    for title, picture in [("Deploy flow", screenshot), ("Again", screenshot), ("Contact", icon)]:
+        slide = deck.slides.add_slide(deck.slide_layouts[5])
+        slide.shapes.title.text = title
+        slide.shapes.add_picture(str(picture), Inches(1), Inches(2))
+    file_path = tmp_path / "deck.pptx"
+    deck.save(file_path)
+    return file_path
+
+
+def test_office_pictures_are_kept_once_and_icons_skipped(tmp_path):
+    images = []
+
+    office_to_markdown(_deck(tmp_path), _VisionLLM(), images)
+
+    assert len(images) == 1  # repeated diagram saved once, icon dropped
+    assert Image.open(io.BytesIO(images[0].png)).size == (800, 400)
+    assert "dispatchSync();" in images[0].caption
+
+
+def test_pdf_pictures_are_cropped_to_the_picture_not_the_page(tmp_path):
+    file_path = tmp_path / "guide.pdf"
+    _pdf(file_path, [(_TEXT, None), ("See the diagram.", (300, 150))])
+    images = []
+
+    pdf_to_markdown(file_path, _VisionLLM(), images)
+
+    assert len(images) == 1 and images[0].page == 2
+    width, height = Image.open(io.BytesIO(images[0].png)).size
+    assert (abs(width - 600), abs(height - 300)) <= (4, 4)  # 300x150pt at 2x, not the 612x792pt page
+
+
+def test_text_only_pdf_keeps_no_pictures(tmp_path):
+    file_path = tmp_path / "policy.pdf"
+    _pdf(file_path, [(_TEXT, None)])
+    images = []
+    llm = _VisionLLM()
+
+    pdf_to_markdown(file_path, llm, images)
+
+    assert images == [] and llm.pages == []
+
+
+def test_standalone_image_document_is_its_own_picture(tmp_path):
+    file_path = tmp_path / "diagram.png"
+    Image.new("RGB", (400, 300), "white").save(file_path)
+    images = []
+
+    image_to_markdown(file_path, _VisionLLM(), images)
+
+    assert len(images) == 1 and images[0].caption.startswith("OCR page 1")
+
+
+def test_chunks_carry_their_picture_and_no_marker_reaches_the_index(tmp_path):
+    store = VectorStore(persist_dir=str(tmp_path / "qdrant"))
+    images = []
+    ingest_file(
+        _deck(tmp_path),
+        document_id="doc-1",
+        company_id="comp-1",
+        user_id="u1",
+        filename="deck.pptx",
+        llm=_VisionLLM(),
+        vector_store=store,
+        images=images,
+    )
+
+    chunks = store.query([1.0, 0.0], top_k=50)
+    assert all("<<img:" not in c["text"] for c in chunks)
+    with_picture = [c for c in chunks if c["images"]]
+    assert with_picture and with_picture[0]["images"][0]["index"] == 0
+    assert "dispatchSync();" in with_picture[0]["images"][0]["caption"]

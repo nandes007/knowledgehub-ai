@@ -31,7 +31,7 @@ def _answer(question: str, contexts: list[str]) -> str:
     prompt = rag._SYSTEM_PROMPT + "\n\n<context>\n" + "\n\n---\n\n".join(contexts) + (
         f"\n</context>\n\nQuestion: {question}\nAnswer:"
     )
-    return "".join(get_llm_provider().generate_answer_stream(prompt))
+    return "".join(get_llm_provider().generate_answer_stream([{"role": "user", "content": prompt}]))
 
 
 def main() -> None:

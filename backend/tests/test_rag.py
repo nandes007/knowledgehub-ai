@@ -1,3 +1,4 @@
+from app.services.llm import message_text
 from app.services.rag import stream_answer
 
 
@@ -19,7 +20,8 @@ class HistoryAnchoringLLM:
     def embed_texts(self, texts):
         return [[1.0] for _ in texts]
 
-    def generate_answer_stream(self, prompt, *, usage=None):
+    def generate_answer_stream(self, messages, *, usage=None):
+        prompt = message_text(messages)
         self.prompts.append(prompt)
         if "assistant: I don't have that in the knowledge base yet." in prompt:
             yield "I don't have that in the knowledge base yet."

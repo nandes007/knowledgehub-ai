@@ -46,15 +46,21 @@ export async function sendChatMessage(
   message: string,
   conversationId?: string,
   onToken?: (text: string) => void,
+  files: File[] = [],
+  onStatus?: (text: string) => void,
 ): Promise<ChatResult> {
-  const response = await apiFetch(`${API_URL}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
-  });
+  const body = new FormData();
+  body.append("message", message);
+  if (conversationId) body.append("conversation_id", conversationId);
+  for (const file of files) body.append("files", file);
+  const response = await apiFetch(`${API_URL}/chat`, { method: "POST", body });
 
   if (!response.ok) {
-    throw new Error(`Chat request failed: ${response.status}`);
+    const detail = await response
+      .json()
+      .then((b: { detail?: unknown }) => (typeof b.detail === "string" ? b.detail : undefined))
+      .catch(() => undefined);
+    throw new Error(detail ?? `Chat request failed: ${response.status}`);
   }
 
   let answer = "";
@@ -64,6 +70,8 @@ export async function sendChatMessage(
         const text = (JSON.parse(data) as { text: string }).text;
         answer += text;
         onToken?.(text);
+      } else if (event === "status") {
+        onStatus?.((JSON.parse(data) as { text: string }).text);
       } else if (event === "error") {
         throw new Error((JSON.parse(data) as { message: string }).message);
       } else if (event === "done") {
@@ -138,12 +146,36 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   }
 }
 
+export type Attachment = {
+  filename: string;
+  mime: string;
+  size: number;
+  truncated: boolean;
+};
+
 export type ConversationMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources: Source[];
+  attachments: Attachment[];
 };
+
+export function attachmentPath(conversationId: string, messageId: string, index: number): string {
+  return `/conversations/${conversationId}/messages/${messageId}/attachments/${index}`;
+}
+
+// Images and attachments sit behind auth, and a plain <img src> can't send the Bearer
+// header, so they're fetched here and handed back as a blob URL (the caller revokes it).
+export function isProtectedPath(src: string): boolean {
+  return src.startsWith("/documents/") || src.startsWith("/conversations/");
+}
+
+export async function fetchProtectedFile(path: string): Promise<string> {
+  const response = await apiFetch(`${API_URL}${path}`);
+  if (!response.ok) throw new Error(`Couldn't load file: ${response.status}`);
+  return URL.createObjectURL(await response.blob());
+}
 
 export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
   const response = await apiFetch(`${API_URL}/conversations/${conversationId}/messages`);
@@ -155,8 +187,15 @@ export async function getConversationMessages(conversationId: string): Promise<C
     role: "user" | "assistant";
     content: string;
     sources: Source[] | null;
+    attachments?: Attachment[] | null;
   }[];
-  return data.map(({ id, role, content, sources }) => ({ id, role, content, sources: sources ?? [] }));
+  return data.map(({ id, role, content, sources, attachments }) => ({
+    id,
+    role,
+    content,
+    sources: sources ?? [],
+    attachments: attachments ?? [],
+  }));
 }
 
 export type DocumentStatus = "processing" | "ready" | "failed";

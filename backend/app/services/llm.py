@@ -24,6 +24,23 @@ _OCR_PROMPT = (
 )
 
 
+# OpenAI chat-completions shape: content is a string, or a list of
+# {"type": "text", "text": ...} / {"type": "image_url", "image_url": {"url": ...}} parts.
+ChatMessage = dict[str, Any]
+
+
+def message_text(messages: list[ChatMessage]) -> str:
+    """All text parts of a message list joined - for logs and test fakes."""
+    parts: list[str] = []
+    for message in messages:
+        content = message["content"]
+        if isinstance(content, str):
+            parts.append(content)
+        else:
+            parts.extend(p["text"] for p in content if p.get("type") == "text")
+    return "\n".join(parts)
+
+
 @dataclass
 class TokenUsage:
     prompt_tokens: int | None = None
@@ -49,7 +66,9 @@ class LLMProvider(ABC):
     def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
 
     @abstractmethod
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None) -> Iterator[str]: ...
+    def generate_answer_stream(
+        self, messages: list[ChatMessage], *, usage: TokenUsage | None = None
+    ) -> Iterator[str]: ...
 
     @abstractmethod
     def transcribe_image(self, png: bytes) -> str: ...
@@ -83,10 +102,12 @@ class OpenAIProvider(LLMProvider):
         )
         return [item.embedding for item in response.data]
 
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None) -> Iterator[str]:
+    def generate_answer_stream(
+        self, messages: list[ChatMessage], *, usage: TokenUsage | None = None
+    ) -> Iterator[str]:
         stream = self._client.chat.completions.create(
             model=settings.chat_model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             stream=True,
             stream_options={"include_usage": True},
         )

@@ -20,7 +20,7 @@ from app.services.llm import LLMProvider, get_llm_provider
 from ingestion.convert import convert_to_markdown
 from ingestion.index import VectorStore, get_vector_store
 from ingestion.ocr import IMAGE_EXTENSIONS
-from ingestion.pipeline import ingest_document
+from ingestion.pipeline import delete_files, ingest_document
 
 router = APIRouter()
 
@@ -158,6 +158,20 @@ def preview_document(document_id: uuid.UUID, session: SessionDep, current_user: 
     return Response(text, media_type="text/markdown; charset=utf-8")
 
 
+@router.get("/documents/{document_id}/images/{index}")
+def document_image(
+    document_id: uuid.UUID, index: int, session: SessionDep, current_user: CurrentUserDep
+) -> Response:
+    # Visibility is checked on every fetch, so images in old answers disappear with access.
+    document = None
+    if current_user.company_id is not None:
+        document = session.exec(_visible_documents(current_user).where(Document.id == document_id)).first()
+    images = (document.images or []) if document else []
+    if not 0 <= index < len(images):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return Response(storage.read(images[index]["uri"]), media_type="image/png")
+
+
 @router.delete("/documents/{document_id}", status_code=204)
 def delete_document(
     document_id: uuid.UUID,
@@ -174,5 +188,7 @@ def delete_document(
 
     storage.delete(document.file_path)
     vector_store.delete_by_document(str(document.id))
+    image_uris = [img["uri"] for img in document.images or []]
     session.delete(document)
     session.commit()
+    delete_files(image_uris)

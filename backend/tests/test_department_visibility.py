@@ -17,7 +17,7 @@ class _FakeLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [[1.0, 0.0] for _ in texts]
 
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
+    def generate_answer_stream(self, messages, *, usage: TokenUsage | None = None):
         if usage is not None:
             usage.prompt_tokens = 1
             usage.completion_tokens = 1
@@ -185,25 +185,25 @@ def test_chat_retrieval_respects_department_and_role_visibility(db_engine, tmp_p
         )
 
         # 1. Admin chat retrieves all
-        admin_sources = [s["filename"] for s in _sources(admin.post("/chat", json={"message": "specs"}))]
+        admin_sources = [s["filename"] for s in _sources(admin.post("/chat", data={"message": "specs"}))]
         assert "handbook.md" in admin_sources
         assert "eng_spec.md" in admin_sources
         assert "hr_policy.md" in admin_sources
 
         # 2. Engineering member retrieves handbook + eng_spec, but NOT hr_policy
-        eng_sources = [s["filename"] for s in _sources(eng_user.post("/chat", json={"message": "specs"}))]
+        eng_sources = [s["filename"] for s in _sources(eng_user.post("/chat", data={"message": "specs"}))]
         assert "handbook.md" in eng_sources
         assert "eng_spec.md" in eng_sources
         assert "hr_policy.md" not in eng_sources
 
         # 3. HR member retrieves handbook + hr_policy, but NOT eng_spec
-        hr_sources = [s["filename"] for s in _sources(hr_user.post("/chat", json={"message": "specs"}))]
+        hr_sources = [s["filename"] for s in _sources(hr_user.post("/chat", data={"message": "specs"}))]
         assert "handbook.md" in hr_sources
         assert "hr_policy.md" in hr_sources
         assert "eng_spec.md" not in hr_sources
 
         # 4. Solo member retrieves only handbook
-        solo_sources = [s["filename"] for s in _sources(solo_user.post("/chat", json={"message": "specs"}))]
+        solo_sources = [s["filename"] for s in _sources(solo_user.post("/chat", data={"message": "specs"}))]
         assert "handbook.md" in solo_sources
         assert "eng_spec.md" not in solo_sources
         assert "hr_policy.md" not in solo_sources

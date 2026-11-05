@@ -9,7 +9,7 @@ from app.models.company import Company
 from app.models.message import Message
 from app.models.user import User
 from app.services.auth import create_access_token, hash_password
-from app.services.llm import TokenUsage, get_llm_provider
+from app.services.llm import TokenUsage, get_llm_provider, message_text
 from ingestion.chunk import chunk_markdown
 from ingestion.index import VectorStore, get_vector_store
 from tests.conftest import _override_db
@@ -22,7 +22,7 @@ class _FakeLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [_bag_of_words(t) for t in texts]
 
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
+    def generate_answer_stream(self, messages, *, usage: TokenUsage | None = None):
         if usage is not None:
             usage.prompt_tokens = 100
             usage.completion_tokens = 8
@@ -33,7 +33,7 @@ class _FailingFakeLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [_bag_of_words(t) for t in texts]
 
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
+    def generate_answer_stream(self, messages, *, usage: TokenUsage | None = None):
         yield "Emplo"
         raise RuntimeError("upstream LLM timed out")
 
@@ -45,7 +45,8 @@ class _RecordingLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [_bag_of_words(t) for t in texts]
 
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
+    def generate_answer_stream(self, messages, *, usage: TokenUsage | None = None):
+        prompt = message_text(messages)
         self.prompts.append(prompt)
         yield "20 days"
 
@@ -104,7 +105,7 @@ def test_chat_creates_a_conversation_when_none_given(client, tmp_path, test_user
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={"message": "How many vacation days do I get?"})
+        response = client.post("/chat", data={"message": "How many vacation days do I get?"})
     finally:
         _clear_overrides()
 
@@ -119,7 +120,7 @@ def test_chat_persists_user_and_assistant_messages(client, tmp_path, test_user_i
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={"message": "How many vacation days do I get?"})
+        response = client.post("/chat", data={"message": "How many vacation days do I get?"})
     finally:
         _clear_overrides()
 
@@ -136,7 +137,7 @@ def test_chat_stores_token_count_on_assistant_message(client, tmp_path, test_use
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={"message": "How many vacation days do I get?"})
+        response = client.post("/chat", data={"message": "How many vacation days do I get?"})
     finally:
         _clear_overrides()
 
@@ -157,12 +158,10 @@ def test_chat_includes_history_and_dynamic_company_prompt(client, tmp_path, test
     _override(recording_llm)
     _override_store(store)
     try:
-        first = client.post("/chat", json={"message": "How many vacation days do I get?"})
+        first = client.post("/chat", data={"message": "How many vacation days do I get?"})
         conversation_id = _parse_sse_events(first.text)[-1][1]["conversation_id"]
 
-        client.post(
-            "/chat",
-            json={"message": "And how many sick days?", "conversation_id": conversation_id},
+        client.post("/chat", data={"message": "And how many sick days?", "conversation_id": conversation_id},
         )
     finally:
         _clear_overrides()
@@ -235,7 +234,7 @@ def test_cross_company_chat_never_surfaces_other_company_documents(db_engine, tm
 
     try:
         # User A chats
-        res_a = client_a.post("/chat", json={"message": "What is the secret policy?"})
+        res_a = client_a.post("/chat", data={"message": "What is the secret policy?"})
         done_a = next(data for event, data in _parse_sse_events(res_a.text) if event == "done")
         sources_a = [s["filename"] for s in done_a["sources"]]
         assert "alpha_secret.md" in sources_a
@@ -243,7 +242,7 @@ def test_cross_company_chat_never_surfaces_other_company_documents(db_engine, tm
         assert "assistant for Acme Alpha" in recording_llm.prompts[0]
 
         # User B chats
-        res_b = client_b.post("/chat", json={"message": "What is the secret policy?"})
+        res_b = client_b.post("/chat", data={"message": "What is the secret policy?"})
         done_b = next(data for event, data in _parse_sse_events(res_b.text) if event == "done")
         sources_b = [s["filename"] for s in done_b["sources"]]
         assert "beta_secret.md" in sources_b
@@ -257,7 +256,7 @@ def test_chat_emits_error_event_on_llm_failure_mid_stream(client, tmp_path, test
     _override(_FailingFakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={"message": "How many vacation days do I get?"})
+        response = client.post("/chat", data={"message": "How many vacation days do I get?"})
     finally:
         _clear_overrides()
 
@@ -271,9 +270,7 @@ def test_chat_with_unknown_conversation_id_returns_404(client, tmp_path, test_us
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post(
-            "/chat",
-            json={"message": "hi", "conversation_id": str(uuid.uuid4())},
+        response = client.post("/chat", data={"message": "hi", "conversation_id": str(uuid.uuid4())},
         )
     finally:
         _clear_overrides()
@@ -285,7 +282,7 @@ def test_chat_requires_a_message(client, tmp_path, test_user_id, db_engine):
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={})
+        response = client.post("/chat", data={})
     finally:
         _clear_overrides()
 
@@ -296,7 +293,7 @@ def test_chat_rejects_a_message_over_the_length_limit(client, tmp_path, test_use
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={"message": "x" * 4001})
+        response = client.post("/chat", data={"message": "x" * 4001})
     finally:
         _clear_overrides()
 
@@ -307,7 +304,7 @@ def test_chat_sets_conversation_title_from_first_message(client, tmp_path, test_
     _override(_FakeLLM())
     _override_store(_seeded_store(tmp_path, test_user_id, db_engine))
     try:
-        response = client.post("/chat", json={"message": "What is our travel policy?"})
+        response = client.post("/chat", data={"message": "What is our travel policy?"})
     finally:
         _clear_overrides()
 

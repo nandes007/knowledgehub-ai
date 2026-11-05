@@ -54,6 +54,15 @@ def _keep(images: list[ExtractedImage] | None, png: bytes, caption: str, page: i
     return f"<<img:{len(images) - 1}>>\n"
 
 
+def _with_markers(markers: str, text: str) -> str:
+    """The chunker splits at headings, so markers placed before a leading heading would
+    land in the previous section, i.e. on the wrong chunk. Put them just under it."""
+    first, _, rest = text.partition("\n")
+    if markers and first.lstrip().startswith("#"):
+        return f"{first}\n{markers}{rest}"
+    return markers + text
+
+
 def to_png(image: Image.Image) -> bytes:
     image = ImageOps.exif_transpose(image).convert("RGB")  # phone photos carry rotation in EXIF
     image.thumbnail((_MAX_SIDE, _MAX_SIDE))
@@ -69,7 +78,7 @@ def image_to_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedI
     except (UnidentifiedImageError, OSError) as exc:
         raise ValueError(f"Couldn't read '{file_path.name}' — the image may be corrupted.") from exc
     text = llm.transcribe_image(png).strip()
-    return _keep(images, png, text) + text
+    return _with_markers(_keep(images, png, text), text)
 
 
 def _pictures(page: pdfium.PdfPage) -> list[tuple[float, float, float, float]]:
@@ -119,7 +128,7 @@ def pdf_to_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedIma
                 continue
             text = llm.transcribe_image(to_png(page.render(scale=_RENDER_SCALE).to_pil())).strip()
             markers = "".join(_keep(images, _crop_picture(page, b), text, page=i + 1) for b in _pictures(page))
-            parts.append(markers + text)
+            parts.append(_with_markers(markers, text))
     finally:
         pdf.close()
     return "\n\n".join(part.strip() for part in parts if part.strip())

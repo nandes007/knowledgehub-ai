@@ -233,3 +233,27 @@ def test_chunks_carry_their_picture_and_no_marker_reaches_the_index(tmp_path):
     with_picture = [c for c in chunks if c["images"]]
     assert with_picture and with_picture[0]["images"][0]["index"] == 0
     assert "dispatchSync();" in with_picture[0]["images"][0]["caption"]
+
+
+def test_each_picture_lands_on_its_own_pages_chunk_when_pages_start_with_a_heading(tmp_path):
+    class _HeadedPages(_VisionLLM):
+        def transcribe_image(self, png: bytes) -> str:
+            self.pages.append(png)
+            return f"## Step {len(self.pages)}\n\nDiagram for step {len(self.pages)}."
+
+    file_path = tmp_path / "guide.pdf"
+    _pdf(file_path, [(_TEXT, None), ("Step 1", (300, 150)), ("Step 2", (300, 150))])
+    store = VectorStore(persist_dir=str(tmp_path / "qdrant"))
+    ingest_file(
+        file_path,
+        document_id="doc-1",
+        company_id="comp-1",
+        user_id="u1",
+        filename="guide.pdf",
+        llm=_HeadedPages(),
+        vector_store=store,
+        images=[],
+    )
+
+    by_text = {c["text"].split("\n")[0]: [i["index"] for i in c["images"]] for c in store.query([1.0, 0.0], top_k=50)}
+    assert by_text == {_TEXT: [], "Step 1": [0], "Step 2": [1]}

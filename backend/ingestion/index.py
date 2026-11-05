@@ -118,6 +118,7 @@ class VectorStore:
                     "visibility": visibility,
                     "h1": c.h1 or "",
                     "h2": c.h2 or "",
+                    "images": c.images,
                 },
             )
             for c, embedding in zip(chunks, embeddings)

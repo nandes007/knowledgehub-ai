@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import CheckConstraint
+from sqlalchemy import JSON, CheckConstraint, Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Index, SQLModel
 
 from app.models.timestamps import utc_timestamp_field
@@ -32,6 +34,11 @@ class Document(SQLModel, table=True):
     )
     visibility: str = Field(default="company", nullable=False)
     chunk_count: int | None = None
+    # Pictures kept from the document: [{"uri", "page", "caption"}]. Files live in storage;
+    # only their locations are stored here.
+    images: list[dict[str, Any]] | None = Field(
+        default=None, sa_column=Column(JSON().with_variant(JSONB(), "postgresql"))
+    )
     created_at: datetime = utc_timestamp_field()
     updated_at: datetime = utc_timestamp_field()
 

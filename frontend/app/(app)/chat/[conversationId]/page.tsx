@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { ChatPanel } from "@/components/ChatPanel";
-import { getConversationMessages } from "@/lib/api";
+import { attachmentPath, getConversationMessages } from "@/lib/api";
 import type { ChatMessage } from "@/components/MessageBubble";
 import { useConversations } from "@/components/ConversationsProvider";
 
@@ -24,9 +24,19 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
     setActiveId?.(conversationId);
     getConversationMessages(conversationId)
       .then((messages) => {
-        setInitialMessages(messages.map(({ id, role, content, sources }) => ({ id, role, content, sources })));
+        setInitialMessages(
+          messages.map(({ id, role, content, sources, attachments }) => ({
+            id,
+            role,
+            content,
+            sources,
+            attachments: attachments.map((a, index) => ({ ...a, src: attachmentPath(conversationId, id, index) })),
+          })),
+        );
         const firstUserMessage = messages.find((m) => m.role === "user");
-        if (firstUserMessage) addOrRename(conversationId, firstUserMessage.content);
+        if (firstUserMessage) {
+          addOrRename(conversationId, firstUserMessage.content || firstUserMessage.attachments[0]?.filename || "New chat");
+        }
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load this conversation."));
   }, [conversationId, addOrRename, setActiveId]);

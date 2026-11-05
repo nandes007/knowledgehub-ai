@@ -61,7 +61,7 @@ def test_embed_texts_parses_openai_response():
 def test_generate_answer_stream_yields_token_deltas_and_skips_empty_chunks():
     provider = OpenAIProvider(client=_FakeOpenAIClient())
 
-    tokens = list(provider.generate_answer_stream("What is the answer?"))
+    tokens = list(provider.generate_answer_stream([{"role": "user", "content": "What is the answer?"}]))
 
     assert tokens == ["4", "2"]
 
@@ -70,7 +70,7 @@ def test_generate_answer_stream_populates_usage_from_final_chunk():
     provider = OpenAIProvider(client=_FakeOpenAIClient())
     usage = TokenUsage()
 
-    list(provider.generate_answer_stream("What is the answer?", usage=usage))
+    list(provider.generate_answer_stream([{"role": "user", "content": "What is the answer?"}], usage=usage))
 
     assert usage.prompt_tokens == 15
     assert usage.completion_tokens == 2
@@ -92,7 +92,7 @@ def test_generate_answer_stream_logs_model_and_token_usage(caplog):
     provider = OpenAIProvider(client=_FakeOpenAIClient())
 
     with caplog.at_level(logging.INFO, logger="app.llm"):
-        list(provider.generate_answer_stream("What is the answer?", usage=TokenUsage()))
+        list(provider.generate_answer_stream([{"role": "user", "content": "What is the answer?"}], usage=TokenUsage()))
 
     record = next(r for r in caplog.records if r.name == "app.llm")
     assert record.call_type == "chat"

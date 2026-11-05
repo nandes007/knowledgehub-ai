@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 
 import pytest
 from sqlmodel import Session
@@ -175,3 +176,40 @@ def test_reindex_rebuilds_an_empty_store_from_stored_files(db_engine, tmp_path):
     # Re-running overwrites rather than duplicates.
     reindex(db_engine, llm=_FakeLLM(), vector_store=store)
     assert len(store.query([1.0, 0.0], top_k=50)) == len(chunks)
+
+
+def test_ingest_document_stores_pictures_and_reingest_replaces_them(db_engine, tmp_path, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    from app.config import settings
+    from app.services import storage
+
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    image_path = tmp_path / "diagram.png"
+    Image.new("RGB", (400, 300), "white").save(image_path)
+
+    class _VisionLLM(_FakeLLM):
+        def transcribe_image(self, png: bytes) -> str:
+            return "Deployment flow: build, test, deploy."
+
+    with Session(db_engine, expire_on_commit=False) as session:
+        document = _make_document(session, tmp_path)
+        document.file_path = str(image_path)
+        document.images = [{"uri": storage.save(f"document-images/{document.id}/7.png", b"old"), "page": None, "caption": "old"}]
+        session.add(document)
+        session.commit()
+        old_uri = document.images[0]["uri"]
+    store = VectorStore(persist_dir=str(tmp_path / "qdrant"))
+
+    for _ in range(2):  # the second run is a reindex: replaces, never duplicates
+        ingest_document(document.id, engine=db_engine, llm=_VisionLLM(), vector_store=store)
+
+    with Session(db_engine) as session:
+        stored = session.get(Document, document.id)
+        assert stored.status == "ready"
+        assert len(stored.images) == 1 and stored.images[0]["caption"].startswith("Deployment flow")
+        assert Image.open(io.BytesIO(storage.read(stored.images[0]["uri"]))).size == (400, 300)
+    assert not Path(old_uri).exists()  # the stale picture from the earlier run is gone
+    assert len(store.query([1.0, 0.0], top_k=50)) == 1

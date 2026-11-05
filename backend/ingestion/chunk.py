@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
@@ -13,6 +13,8 @@ class Chunk:
     index: int
     h1: str | None
     h2: str | None
+    # [{"index": n, "caption": ...}] - pictures from the document that sat in this chunk.
+    images: list[dict] = field(default_factory=list)
 
 
 def chunk_markdown(

@@ -48,9 +48,11 @@ def test_alembic_upgrade_and_downgrade(tmp_path):
     assert "documents" in tables
     assert "conversations" in tables
     assert "messages" in tables
+    assert "attachments" in {c["name"] for c in inspector.get_columns("messages")}
+    assert "images" in {c["name"] for c in inspector.get_columns("documents")}
 
-    # 2. Downgrade by step (-1) to 0001
-    command.downgrade(alembic_cfg, "-1")
+    # 2. Downgrade to 0001
+    command.downgrade(alembic_cfg, "0001_initial_schema")
     inspector = inspect(engine)
     tables_after_step = inspector.get_table_names()
     assert "companies" not in tables_after_step
@@ -155,7 +157,7 @@ def test_migration_backfills_existing_data(tmp_path):
             )
         )
 
-    # 2. Upgrade to head (0002)
+    # 2. Upgrade to head
     command.upgrade(alembic_cfg, "head")
 
     # 3. Verify backfill results

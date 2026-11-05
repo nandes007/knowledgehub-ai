@@ -25,5 +25,8 @@ class Message(SQLModel, table=True):
     role: str
     content: str
     sources: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(_SourcesType))
+    # Files the user attached: [{"uri", "filename", "mime", "size", "text_uri", "truncated"}].
+    # The files live in storage; only their locations are stored here.
+    attachments: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(_SourcesType))
     token_count: int | None = None
     created_at: datetime = utc_timestamp_field()

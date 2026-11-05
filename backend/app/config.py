@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-large"
+    # Must accept image input: chat attachments are sent to it as images.
     chat_model: str = "gpt-4o-mini"
     # Reads scanned PDFs and images; must accept image input. Set VISION_BASE_URL to use any
     # OpenAI-compatible endpoint (e.g. https://openrouter.ai/api/v1); leave empty to use OpenAI.

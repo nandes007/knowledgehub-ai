@@ -128,6 +128,62 @@ describe("Chat Experience Components", () => {
     });
   });
 
+  describe("Attachments and document images", () => {
+    it("loads document images in answers through the authenticated fetch, not a bare <img>", () => {
+      const html = renderToString(
+        createElement(MessageBubble, {
+          message: {
+            id: "msg-doc-img",
+            role: "assistant",
+            content: "Here is the flow:\n\n![Deployment flow](/documents/doc-1/images/0)",
+          },
+        }),
+      );
+
+      expect(html).toContain('aria-label="Deployment flow"');
+      expect(html).not.toContain('src="/documents/doc-1/images/0"');
+    });
+
+    it("shows attachments on a user message, including one with no text", () => {
+      const html = renderToString(
+        createElement(MessageBubble, {
+          message: {
+            id: "msg-att",
+            role: "user",
+            content: "",
+            attachments: [
+              { filename: "error.png", mime: "image/png", src: "/conversations/c1/messages/m1/attachments/0" },
+              { filename: "contract.pdf", mime: "application/pdf", truncated: true, src: "/conversations/c1/messages/m1/attachments/1" },
+            ],
+          },
+        }),
+      );
+
+      expect(html).toContain('aria-label="error.png"');
+      expect(html).toContain("contract.pdf");
+      expect(html).toContain("partly read");
+      expect(html).not.toContain("bg-user-bubble"); // no empty text bubble
+    });
+
+    it("shows the reading status while an attachment is processed", () => {
+      const html = renderToString(
+        createElement(MessageBubble, {
+          message: { id: "msg-s", role: "assistant", content: "", streaming: true, status: "Reading report.pdf…" },
+        }),
+      );
+
+      expect(html).toContain("Reading report.pdf…");
+      expect(html).not.toContain("thinking-dot");
+    });
+
+    it("renders a labelled attach button and file input in the composer", () => {
+      const html = renderToString(createElement(ChatPanel, {}));
+      expect(html).toContain('aria-label="Attach files"');
+      expect(html).toContain('type="file"');
+      expect(html).toContain("multiple");
+    });
+  });
+
   describe("ChatPanel", () => {
     it("renders empty state with centered Wordmark and prompt subtitle", () => {
       const html = renderToString(createElement(ChatPanel, {}));

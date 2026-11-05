@@ -12,7 +12,7 @@ class _TopicalLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [[1.0, 0.0] for _ in texts]
 
-    def generate_answer_stream(self, prompt: str, *, usage: TokenUsage | None = None):
+    def generate_answer_stream(self, messages, *, usage: TokenUsage | None = None):
         yield "answer"
 
 

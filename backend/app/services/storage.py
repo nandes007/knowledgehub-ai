@@ -39,9 +39,8 @@ def save(name: str, contents: bytes) -> str:
         _s3().put_object(Bucket=settings.s3_bucket, Key=key, Body=contents)
         return f"{_S3_SCHEME}{settings.s3_bucket}/{key}"
 
-    upload_dir = Path(settings.upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    path = upload_dir / name
+    path = Path(settings.upload_dir) / name
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(contents)
     return str(path)
 
@@ -59,6 +58,11 @@ def local_copy(location: str) -> Iterator[Path]:
         path = Path(tmp) / Path(key).name
         _s3().download_file(bucket, key, str(path))
         yield path
+
+
+def read(location: str) -> bytes:
+    with local_copy(location) as path:
+        return path.read_bytes()
 
 
 def delete(location: str) -> None:

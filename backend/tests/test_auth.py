@@ -296,7 +296,7 @@ def test_protected_route_without_a_token_returns_401(anon_client):
 
 
 def test_chat_without_a_token_returns_401(anon_client):
-    response = anon_client.post("/chat", json={"message": "hi"})
+    response = anon_client.post("/chat", data={"message": "hi"})
 
     assert response.status_code == 401
 

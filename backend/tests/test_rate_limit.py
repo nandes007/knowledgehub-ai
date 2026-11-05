@@ -9,7 +9,7 @@ class _FakeLLM:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [[1.0, 0.0] for _ in texts]
 
-    def generate_answer_stream(self, prompt: str, *, usage=None):
+    def generate_answer_stream(self, messages, *, usage=None):
         yield "hi"
 
 
@@ -31,7 +31,7 @@ def test_chat_returns_429_after_exceeding_the_per_user_limit(client, tmp_path):
     _override(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
     try:
-        responses = [client.post("/chat", json={"message": "hi"}) for _ in range(21)]
+        responses = [client.post("/chat", data={"message": "hi"}) for _ in range(21)]
     finally:
         _clear_overrides()
 

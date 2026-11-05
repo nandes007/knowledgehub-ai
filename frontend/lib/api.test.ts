@@ -72,10 +72,33 @@ describe("sendChatMessage", () => {
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toContain("/chat");
     expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body)).toEqual({
-      message: "hello",
-      conversation_id: "existing-conversation",
-    });
+    expect(options.body.get("message")).toBe("hello");
+    expect(options.body.get("conversation_id")).toBe("existing-conversation");
+  });
+
+  it("sends attachments as multipart files and reports status events", async () => {
+    const body =
+      'event: status\ndata: {"text": "Reading report.pdf\u2026"}\n\n' +
+      'event: done\ndata: {"sources": [], "message_id": "m1", "conversation_id": "c1"}\n\n';
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(body));
+    vi.stubGlobal("fetch", fetchMock);
+    const statuses: string[] = [];
+    const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" });
+
+    await sendChatMessage("", undefined, undefined, [file], (text) => statuses.push(text));
+
+    const form = fetchMock.mock.calls[0][1].body as FormData;
+    expect((form.getAll("files")[0] as File).name).toBe("report.pdf");
+    expect(statuses).toEqual(["Reading report.pdf\u2026"]);
+  });
+
+  it("surfaces the server's validation message", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ detail: "Attach at most 5 files per message." }), { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendChatMessage("hi")).rejects.toThrow("Attach at most 5 files per message.");
   });
 
   it("throws with the error event's message on a mid-stream failure", async () => {
@@ -232,7 +255,14 @@ describe("deleteConversation", () => {
 describe("getConversationMessages", () => {
   it("returns the parsed message history from GET /conversations/{id}/messages", async () => {
     const body = [
-      { id: "m1", role: "user", content: "What is the vacation policy?", sources: null, created_at: "2026-01-01T00:00:00Z" },
+      {
+        id: "m1",
+        role: "user",
+        content: "What is the vacation policy?",
+        sources: null,
+        attachments: [{ filename: "a.png", mime: "image/png", size: 3, truncated: false }],
+        created_at: "2026-01-01T00:00:00Z",
+      },
       {
         id: "m2",
         role: "assistant",
@@ -247,12 +277,19 @@ describe("getConversationMessages", () => {
     const result = await getConversationMessages("c1");
 
     expect(result).toEqual([
-      { id: "m1", role: "user", content: "What is the vacation policy?", sources: [] },
+      {
+        id: "m1",
+        role: "user",
+        content: "What is the vacation policy?",
+        sources: [],
+        attachments: [{ filename: "a.png", mime: "image/png", size: 3, truncated: false }],
+      },
       {
         id: "m2",
         role: "assistant",
         content: "20 days per year.",
         sources: [{ document_id: "doc-1", filename: "policy.md", chunk_preview: "..." }],
+        attachments: [],
       },
     ]);
     expect(fetchMock.mock.calls[0][0]).toContain("/conversations/c1/messages");

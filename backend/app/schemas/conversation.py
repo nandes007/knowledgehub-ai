@@ -18,6 +18,14 @@ class ConversationUpdate(BaseModel):
     title: str
 
 
+class AttachmentRead(BaseModel):
+    # Storage locations stay server-side; files are fetched by index through the API.
+    filename: str
+    mime: str
+    size: int
+    truncated: bool = False
+
+
 class MessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,4 +33,5 @@ class MessageRead(BaseModel):
     role: str
     content: str
     sources: list[dict[str, Any]] | None
+    attachments: list[AttachmentRead] | None = None
     created_at: datetime

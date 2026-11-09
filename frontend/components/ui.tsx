@@ -49,7 +49,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 }
 
 const STATUS_LABEL: Record<DocumentStatus, string> = {
-  ready: "Filed",
+  ready: "Completed",
   processing: "Processing",
   failed: "Void",
 };
@@ -71,6 +71,27 @@ export function StatusStamp({ status }: { status: DocumentStatus }) {
 }
 
 export const StatusPill = StatusStamp;
+
+export function ProgressBar({ label, percent, barClassName = "bg-gold" }: { label: string; percent: number; barClassName?: string }) {
+  return (
+    <div className="w-full max-w-sm space-y-1.5">
+      <div className="flex justify-between gap-3 text-xs">
+        <span>{label}</span>
+        <span className="font-mono">{percent}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay"
+      >
+        <div className={`h-full rounded-full transition-[width] duration-300 ${barClassName}`} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
 
 // ponytail: horizontal CSS bars instead of a charting dependency — three
 // series of one number per label is all the admin dashboard plots. Reach for a

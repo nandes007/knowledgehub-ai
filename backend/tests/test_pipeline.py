@@ -127,6 +127,7 @@ def test_ingest_document_marks_ready_with_chunk_count_and_metadata(db_engine, tm
         updated = session.get(Document, document_id)
 
     assert updated.status == "ready"
+    assert updated.progress == 100
     assert updated.chunk_count is not None
     assert updated.chunk_count >= 1
     assert updated.error_message is None

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { uploadDocument, type Visibility } from "../lib/api";
-import { Label, Input } from "./ui";
+import { Label, Input, ProgressBar } from "./ui";
 
 const ACCEPTED_TYPES = ".pdf,.docx,.pptx,.md,.png,.jpg,.jpeg,.webp";
 
@@ -18,7 +18,7 @@ function IconCloudUpload() {
 
 export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fraction: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<Visibility>("company");
   const [department, setDepartment] = useState("");
@@ -29,11 +29,15 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
 
-    setUploadProgress({ current: 1, total: fileArray.length });
     try {
       for (let i = 0; i < fileArray.length; i++) {
-        setUploadProgress({ current: i + 1, total: fileArray.length });
-        await uploadDocument(fileArray[i], { visibility, department: department || undefined });
+        const current = i + 1;
+        setUploadProgress({ current, total: fileArray.length, fraction: 0 });
+        await uploadDocument(fileArray[i], {
+          visibility,
+          department: department || undefined,
+          onProgress: (fraction) => setUploadProgress({ current, total: fileArray.length, fraction }),
+        });
       }
       onUploaded();
     } catch (err) {
@@ -108,7 +112,10 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
           }}
         />
         {uploadProgress ? (
-          <span>Uploading file {uploadProgress.current} of {uploadProgress.total}...</span>
+          <ProgressBar
+            label={uploadProgress.total > 1 ? `Uploading file ${uploadProgress.current} of ${uploadProgress.total}…` : "Uploading…"}
+            percent={Math.round(uploadProgress.fraction * 100)}
+          />
         ) : (
           "Drag and drop files here, or click to browse"
         )}

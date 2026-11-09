@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { deleteDocument, listDocuments, type Document } from "../lib/api";
-import { StatusPill, Card, Input } from "./ui";
+import { StatusPill, Card, Input, ProgressBar } from "./ui";
 import { DocumentPreview } from "./DocumentPreview";
 
 const POLL_INTERVAL_MS = 4000;
@@ -179,6 +179,11 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
                   </span>
                   <span className="font-mono text-xs text-text-secondary">{formatDate(doc.createdAt)}</span>
                 </div>
+                {doc.status === "processing" && (
+                  <div className="mt-2 text-text-secondary">
+                    <ProgressBar label="Processing…" percent={doc.progress} barClassName="bg-status-pending" />
+                  </div>
+                )}
                 {doc.status === "failed" && doc.errorMessage && (
                   <p className="mt-1 text-xs text-status-void">{doc.errorMessage}</p>
                 )}

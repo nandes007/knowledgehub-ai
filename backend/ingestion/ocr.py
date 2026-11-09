@@ -9,6 +9,7 @@ import base64
 import binascii
 import io
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -101,7 +102,16 @@ def _crop_picture(page: pdfium.PdfPage, bounds: tuple[float, float, float, float
     return to_png(page.render(scale=_RENDER_SCALE, crop=crop).to_pil())
 
 
-def pdf_to_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedImage] | None = None) -> str:
+# Called with the fraction (0-1) of vision-model calls done, so slow OCR shows progress.
+Progress = Callable[[float], None]
+
+
+def pdf_to_markdown(
+    file_path: Path,
+    llm: LLMProvider,
+    images: list[ExtractedImage] | None = None,
+    on_progress: Progress | None = None,
+) -> str:
     """Text pages are read directly; pages with pictures go to the vision model whole.
 
     A PDF with no text at all (a scan) is OCR'd on every page.
@@ -122,6 +132,7 @@ def pdf_to_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedIma
             )
         # ponytail: sequential calls, ~5s/page; run pages concurrently if big scans get slow.
         parts = []
+        done = 0
         for i, page in enumerate(pdf):
             if i not in ocr_pages:
                 parts.append(page.get_textpage().get_text_range())
@@ -129,12 +140,20 @@ def pdf_to_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedIma
             text = llm.transcribe_image(to_png(page.render(scale=_RENDER_SCALE).to_pil())).strip()
             markers = "".join(_keep(images, _crop_picture(page, b), text, page=i + 1) for b in _pictures(page))
             parts.append(_with_markers(markers, text))
+            done += 1
+            if on_progress:
+                on_progress(done / len(ocr_pages))
     finally:
         pdf.close()
     return "\n\n".join(part.strip() for part in parts if part.strip())
 
 
-def office_to_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedImage] | None = None) -> str:
+def office_to_markdown(
+    file_path: Path,
+    llm: LLMProvider,
+    images: list[ExtractedImage] | None = None,
+    on_progress: Progress | None = None,
+) -> str:
     """DOCX/PPTX text with each embedded picture replaced, in place, by its transcription."""
     text = convert_to_markdown(file_path, keep_data_uris=True)
     embedded = set(_DATA_URI_IMAGE.findall(text))
@@ -152,6 +171,8 @@ def office_to_markdown(file_path: Path, llm: LLMProvider, images: list[Extracted
             png, text = _transcribe_embedded(data, llm)
             transcribed[data] = text
             markers[data] = _keep(images, png, text) if png and text else ""
+            if on_progress:
+                on_progress(len(transcribed) / len(embedded))
         return f"\n\n{markers[data]}{transcribed[data]}\n\n" if transcribed[data] else ""
 
     return _DATA_URI_IMAGE.sub(replace, text)

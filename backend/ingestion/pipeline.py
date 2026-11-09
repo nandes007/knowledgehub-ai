@@ -1,6 +1,7 @@
 import logging
 import re
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy import Engine
@@ -16,6 +17,7 @@ from ingestion.ocr import (
     IMAGE_EXTENSIONS,
     IMAGE_MARKER,
     ExtractedImage,
+    Progress,
     image_to_markdown,
     office_to_markdown,
     pdf_to_markdown,
@@ -27,16 +29,21 @@ _MIN_EXTRACTED_CHARS = 20
 _CAPTION_LENGTH = 300
 
 
-def extract_markdown(file_path: Path, llm: LLMProvider, images: list[ExtractedImage] | None = None) -> str:
+def extract_markdown(
+    file_path: Path,
+    llm: LLMProvider,
+    images: list[ExtractedImage] | None = None,
+    on_progress: Progress | None = None,
+) -> str:
     """Any supported file to markdown, OCR included. Pass `images` to collect the pictures
     worth showing in answers; their positions are left in the text as markers."""
     suffix = file_path.suffix.lower()
     if suffix in IMAGE_EXTENSIONS:
         return image_to_markdown(file_path, llm, images)
     if suffix == ".pdf":
-        return pdf_to_markdown(file_path, llm, images)
+        return pdf_to_markdown(file_path, llm, images, on_progress)
     if suffix in (".docx", ".pptx"):
-        return office_to_markdown(file_path, llm, images)
+        return office_to_markdown(file_path, llm, images, on_progress)
     return convert_to_markdown(file_path)
 
 
@@ -62,25 +69,31 @@ def ingest_file(
     vector_store: VectorStore | None = None,
     chunk_size: int | None = None,
     images: list[ExtractedImage] | None = None,
+    on_progress: Callable[[int], None] | None = None,
 ) -> int:
     """Pass an empty `images` list to receive the document's pictures; chunks reference
-    them by index."""
+    them by index. `on_progress` gets a 0-100 percentage as each step finishes."""
+    report = on_progress or (lambda _percent: None)
     llm = llm or get_llm_provider()
     vector_store = vector_store or get_vector_store()
 
     collected: list[ExtractedImage] = [] if images is None else images
-    text = extract_markdown(file_path, llm, collected)
+    # ponytail: fixed step weights — OCR dominates when present, so it gets most of the bar.
+    text = extract_markdown(file_path, llm, collected, lambda fraction: report(int(fraction * 70)))
+    report(70)
     if len(IMAGE_MARKER.sub("", text).strip()) < _MIN_EXTRACTED_CHARS:
         raise ValueError("This file has no readable text.")
     # chunk_size is an override for the eval harness; production uses the default.
     chunks = chunk_markdown(text, **({"chunk_size": chunk_size} if chunk_size else {}))
     _attach_images(chunks, collected)
+    report(75)
     embeddings = llm.embed_texts([c.text for c in chunks])
+    report(90)
     # Re-ingest replaces the document's chunks: drop the old ones only once embedding
     # succeeded, so a failed re-run leaves the document searchable.
     vector_store.delete_by_document(document_id)
 
-    return vector_store.upsert_chunks(
+    count = vector_store.upsert_chunks(
         document_id=document_id,
         user_id=user_id,
         filename=filename,
@@ -92,6 +105,8 @@ def ingest_file(
         department=department,
         visibility=visibility,
     )
+    report(95)
+    return count
 
 
 def ingest_document(
@@ -111,6 +126,14 @@ def ingest_document(
         if document is None:
             return
 
+        def save_progress(percent: int) -> None:
+            # Only commit forward moves, so a per-page callback doesn't spam the DB.
+            if percent > document.progress:
+                document.progress = percent
+                session.add(document)
+                session.commit()
+
+        document.progress = 0
         images: list[ExtractedImage] = []
         try:
             with storage.local_copy(document.file_path) as file_path:
@@ -127,6 +150,7 @@ def ingest_document(
                     llm=llm,
                     vector_store=vector_store,
                     images=images,
+                    on_progress=save_progress,
                 )
             stored = _store_images(document, images)
         except Exception as exc:
@@ -138,6 +162,7 @@ def ingest_document(
 
         stale = [img["uri"] for img in document.images or [] if img["uri"] not in {i["uri"] for i in stored}]
         document.status = "ready"
+        document.progress = 100
         document.chunk_count = chunk_count
         document.images = stored
         session.add(document)

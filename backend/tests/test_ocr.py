@@ -118,6 +118,27 @@ def test_scanned_pdf_is_ocrd_on_every_page(tmp_path):
     assert len(llm.pages) == 3
 
 
+def test_scanned_pdf_reports_progress_per_ocrd_page(tmp_path):
+    file_path = tmp_path / "scan.pdf"
+    pages = [Image.new("RGB", (600, 800), "white") for _ in range(2)]
+    pages[0].save(file_path, save_all=True, append_images=pages[1:])
+    reported: list[int] = []
+
+    ingest_file(
+        file_path,
+        document_id="doc-1",
+        company_id="comp-1",
+        user_id="u1",
+        filename=file_path.name,
+        llm=_VisionLLM(),
+        vector_store=VectorStore(persist_dir=str(tmp_path / "qdrant")),
+        on_progress=reported.append,
+    )
+
+    # One tick per OCR'd page inside the extract step, then one per later step.
+    assert reported == [35, 70, 70, 75, 90, 95]
+
+
 def test_corrupt_image_and_oversized_scan_give_clear_errors(tmp_path):
     broken = tmp_path / "broken.png"
     broken.write_bytes(b"not an image")

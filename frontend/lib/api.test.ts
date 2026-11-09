@@ -360,34 +360,57 @@ describe("listDocuments", () => {
 });
 
 describe("uploadDocument", () => {
-  it("POSTs the file as multipart form data and returns the created document", async () => {
+  // Minimal XHR fake: replies with `status`/`responseText` on send, after one progress event.
+  function stubXhr(status: number, responseText: string) {
+    const sent: { method?: string; url?: string; body?: unknown } = {};
+    class FakeXhr {
+      status = 0;
+      responseText = "";
+      upload: { onprogress?: (e: { lengthComputable: boolean; loaded: number; total: number }) => void } = {};
+      onload?: () => void;
+      onerror?: () => void;
+      open(method: string, url: string) {
+        sent.method = method;
+        sent.url = url;
+      }
+      setRequestHeader() {}
+      send(body: unknown) {
+        sent.body = body;
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 2 });
+        this.status = status;
+        this.responseText = responseText;
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXhr);
+    return sent;
+  }
+
+  it("POSTs the file as multipart form data, reports progress, and returns the created document", async () => {
     const body = { id: "d3", filename: "handbook.pdf", status: "processing" };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 202 }));
-    vi.stubGlobal("fetch", fetchMock);
+    const sent = stubXhr(202, JSON.stringify(body));
     const file = new File(["contents"], "handbook.pdf", { type: "application/pdf" });
+    const onProgress = vi.fn();
 
-    const result = await uploadDocument(file);
+    const result = await uploadDocument(file, { onProgress });
 
-    expect(result).toEqual({ id: "d3", filename: "handbook.pdf", status: "processing" });
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/documents");
-    expect(options.method).toBe("POST");
-    expect(options.body).toBeInstanceOf(FormData);
-    expect((options.body as FormData).get("file")).toBe(file);
+    expect(result).toEqual(body);
+    expect(onProgress).toHaveBeenCalledWith(0.5);
+    expect(sent.url).toContain("/documents");
+    expect(sent.method).toBe("POST");
+    expect(sent.body).toBeInstanceOf(FormData);
+    expect((sent.body as FormData).get("file")).toBe(file);
   });
 
   it("throws the backend's detail message when the upload is rejected", async () => {
-    const body = JSON.stringify({ detail: "Unsupported file type '.exe'. Supported: PDF, DOCX, PPTX, MD." });
-    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status: 400 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubXhr(400, JSON.stringify({ detail: "Unsupported file type '.exe'. Supported: PDF, DOCX, PPTX, MD." }));
     const file = new File(["contents"], "virus.exe", { type: "application/octet-stream" });
 
     await expect(uploadDocument(file)).rejects.toThrow("Unsupported file type");
   });
 
   it("falls back to a generic message when the error response has no detail", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("too big", { status: 413 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubXhr(413, "too big");
     const file = new File(["contents"], "big.pdf", { type: "application/pdf" });
 
     await expect(uploadDocument(file)).rejects.toThrow("413");

@@ -78,11 +78,11 @@ describe("UI primitives", () => {
       expect(StatusPill).toBe(StatusStamp);
     });
 
-    it("renders ready status with green style and Filed text", () => {
+    it("renders ready status with green style and Completed text", () => {
       const el = StatusStamp({ status: "ready" });
       expect(el.props.className).toContain("text-status-ready");
       expect(el.props.className).toContain("bg-status-ready-bg");
-      expect(el.props.children).toBe("Filed");
+      expect(el.props.children).toBe("Completed");
     });
 
     it("renders processing status with pending style and Processing text", () => {

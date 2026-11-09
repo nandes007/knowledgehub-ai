@@ -27,6 +27,8 @@ class Document(SQLModel, table=True):
     file_path: str
     file_hash: str
     status: str = Field(default="processing", nullable=False)
+    # Ingestion progress, 0-100; written by the background pipeline as it goes.
+    progress: int = Field(default=0, nullable=False)
     error_message: str | None = None
     doc_type: str = Field(default="general", nullable=False)
     department_id: uuid.UUID | None = Field(

@@ -209,6 +209,7 @@ export type Document = {
   department: string | null;
   visibility: Visibility;
   chunkCount: number | null;
+  progress: number;
   errorMessage: string | null;
   createdAt: string;
 };
@@ -225,16 +226,18 @@ export async function listDocuments(): Promise<Document[]> {
     department: string | null;
     visibility: Visibility;
     chunk_count: number | null;
+    progress: number;
     error_message: string | null;
     created_at: string;
   }[];
-  return data.map(({ id, filename, status, department, visibility, chunk_count, error_message, created_at }) => ({
+  return data.map(({ id, filename, status, department, visibility, chunk_count, progress, error_message, created_at }) => ({
     id,
     filename,
     status,
     department,
     visibility,
     chunkCount: chunk_count,
+    progress,
     errorMessage: error_message,
     createdAt: created_at,
   }));
@@ -265,23 +268,42 @@ export type UploadedDocument = {
   status: DocumentStatus;
 };
 
-export async function uploadDocument(
+// ponytail: XHR instead of apiFetch because fetch() can't report upload
+// progress. Mirrors apiFetch's auth header, 401 redirect, and network error.
+export function uploadDocument(
   file: File,
-  options?: { department?: string; visibility?: Visibility },
+  options?: { department?: string; visibility?: Visibility; onProgress?: (fraction: number) => void },
 ): Promise<UploadedDocument> {
   const formData = new FormData();
   formData.append("file", file);
   if (options?.department) formData.append("department", options.department);
   if (options?.visibility) formData.append("visibility", options.visibility);
-  const response = await apiFetch(`${API_URL}/documents`, { method: "POST", body: formData });
-  if (!response.ok) {
-    const detail = await response
-      .json()
-      .then((body: { detail?: string }) => body.detail)
-      .catch(() => undefined);
-    throw new Error(detail ?? `Failed to upload document: ${response.status}`);
-  }
-  return (await response.json()) as UploadedDocument;
+  const token = getToken();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}/documents`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) options?.onProgress?.(event.loaded / event.total);
+    };
+    xhr.onerror = () => reject(new Error("Couldn't reach the server. Check your connection and try again."));
+    xhr.onload = () => {
+      if (xhr.status === 401 && token) {
+        clearToken();
+        window.location.href = "/login";
+      }
+      let body: { detail?: string } | undefined;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        body = undefined;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as UploadedDocument);
+      else reject(new Error(body?.detail ?? `Failed to upload document: ${xhr.status}`));
+    };
+    xhr.send(formData);
+  });
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {

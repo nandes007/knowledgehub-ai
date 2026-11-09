@@ -27,5 +27,6 @@ class DocumentSummary(BaseModel):
     department_id: uuid.UUID | None = None
     visibility: str
     chunk_count: int | None = None
+    progress: int = 0
     error_message: str | None = None
     created_at: datetime

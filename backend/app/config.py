@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-to-a-random-secret"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
-    hybrid_search: bool = True
+    hybrid_search: bool = False
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 

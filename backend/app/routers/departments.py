@@ -7,21 +7,16 @@ from app.deps import AdminDep, SessionDep
 from app.models.department import Department
 from app.schemas.department import DepartmentCreate, DepartmentRead
 
+# Mounted under /companies/{slug}.
 router = APIRouter(prefix="/departments", tags=["departments"])
 
 
 @router.post("", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED)
 def create_department(
     payload: DepartmentCreate,
-    current_user: AdminDep,
+    ctx: AdminDep,
     session: SessionDep,
 ) -> Department:
-    if current_user.company_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admin must belong to a company",
-        )
-
     dept_name = payload.name.strip()
     if not dept_name:
         raise HTTPException(
@@ -31,7 +26,7 @@ def create_department(
 
     existing = session.exec(
         select(Department).where(
-            Department.company_id == current_user.company_id,
+            Department.company_id == ctx.company.id,
             Department.name == dept_name,
         )
     ).first()
@@ -43,7 +38,7 @@ def create_department(
 
     department = Department(
         name=dept_name,
-        company_id=current_user.company_id,
+        company_id=ctx.company.id,
     )
     session.add(department)
     session.commit()
@@ -54,18 +49,12 @@ def create_department(
 
 @router.get("", response_model=list[DepartmentRead])
 def list_departments(
-    current_user: AdminDep,
+    ctx: AdminDep,
     session: SessionDep,
 ) -> list[Department]:
-    if current_user.company_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admin must belong to a company",
-        )
-
     statement = (
         select(Department)
-        .where(Department.company_id == current_user.company_id)
+        .where(Department.company_id == ctx.company.id)
         .order_by(Department.name.asc())
     )
     departments = session.exec(statement).all()
@@ -75,17 +64,11 @@ def list_departments(
 @router.delete("/{department_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_department(
     department_id: uuid.UUID,
-    current_user: AdminDep,
+    ctx: AdminDep,
     session: SessionDep,
 ) -> None:
-    if current_user.company_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admin must belong to a company",
-        )
-
     department = session.get(Department, department_id)
-    if department is None or department.company_id != current_user.company_id:
+    if department is None or department.company_id != ctx.company.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Department not found",

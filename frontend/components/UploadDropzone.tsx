@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { uploadDocument, type Visibility } from "../lib/api";
+import { useCompany } from "./CompanyProvider";
 import { Label, Input, ProgressBar } from "./ui";
 
 const ACCEPTED_TYPES = ".pdf,.docx,.pptx,.md,.png,.jpg,.jpeg,.webp";
@@ -17,6 +18,7 @@ function IconCloudUpload() {
 }
 
 export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
+  const { slug } = useCompany();
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fraction: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded: () => void }) {
       for (let i = 0; i < fileArray.length; i++) {
         const current = i + 1;
         setUploadProgress({ current, total: fileArray.length, fraction: 0 });
-        await uploadDocument(fileArray[i], {
+        await uploadDocument(slug, fileArray[i], {
           visibility,
           department: department || undefined,
           onProgress: (fraction) => setUploadProgress({ current, total: fileArray.length, fraction }),

@@ -2,7 +2,6 @@ import hashlib
 from pathlib import Path
 import uuid
 
-from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -10,11 +9,9 @@ from app.main import app
 from app.models.company import Company
 from app.models.department import Department
 from app.models.document import Document
-from app.models.user import User
-from app.services.auth import create_access_token, hash_password
 from app.services.llm import get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
-from tests.conftest import _override_db
+from tests.conftest import _registered_client, _user_id_from, company_id_of
 
 
 class _FakeLLM:
@@ -99,11 +96,10 @@ def test_upload_document_sets_company_and_uploaded_by(admin_client, db_engine, t
 
     with Session(db_engine) as session:
         document = session.get(Document, document_id)
-        admin = session.exec(select(User).where(User.email == "admin-user@example.com")).first()
 
     assert document is not None
-    assert document.uploaded_by == admin.id
-    assert document.company_id == admin.company_id
+    assert document.uploaded_by == _user_id_from(admin_client)
+    assert document.company_id == company_id_of(db_engine)
 
 
 def test_upload_document_rejects_files_over_the_size_limit(admin_client, tmp_path, monkeypatch):
@@ -166,35 +162,8 @@ def test_upload_document_allows_duplicate_hash_in_different_company(db_engine, t
     _override_llm(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
 
-    _override_db(db_engine)
-    with Session(db_engine, expire_on_commit=False) as session:
-        c1 = Company(name="Company Alpha", status="active")
-        c2 = Company(name="Company Beta", status="active")
-        session.add_all([c1, c2])
-        session.commit()
-
-        u1 = User(
-            email="admin@alpha.com",
-            password_hash=hash_password("pw"),
-            role="admin",
-            approval_status="approved",
-            company_id=c1.id,
-        )
-        u2 = User(
-            email="admin@beta.com",
-            password_hash=hash_password("pw"),
-            role="admin",
-            approval_status="approved",
-            company_id=c2.id,
-        )
-        session.add_all([u1, u2])
-        session.commit()
-        u1_id, u2_id = u1.id, u2.id
-
-    client1 = TestClient(app)
-    client1.headers["Authorization"] = f"Bearer {create_access_token(u1_id)}"
-    client2 = TestClient(app)
-    client2.headers["Authorization"] = f"Bearer {create_access_token(u2_id)}"
+    client1 = _registered_client(db_engine, "admin1@example.com", company_name="Company Alpha", role="admin")
+    client2 = _registered_client(db_engine, "admin2@example.com", company_name="Company Beta", role="admin")
 
     try:
         res1 = client1.post("/documents", files={"file": ("doc.md", content, "text/markdown")})
@@ -342,35 +311,8 @@ def test_delete_cross_company_document_returns_404(db_engine, tmp_path, monkeypa
     _override_llm(_FakeLLM())
     _override_store(VectorStore(persist_dir=str(tmp_path / "chroma")))
 
-    _override_db(db_engine)
-    with Session(db_engine, expire_on_commit=False) as session:
-        c1 = Company(name="Company 1", status="active")
-        c2 = Company(name="Company 2", status="active")
-        session.add_all([c1, c2])
-        session.commit()
-
-        u1 = User(
-            email="admin1@c1.com",
-            password_hash=hash_password("pw"),
-            role="admin",
-            approval_status="approved",
-            company_id=c1.id,
-        )
-        u2 = User(
-            email="admin2@c2.com",
-            password_hash=hash_password("pw"),
-            role="admin",
-            approval_status="approved",
-            company_id=c2.id,
-        )
-        session.add_all([u1, u2])
-        session.commit()
-        u1_id, u2_id = u1.id, u2.id
-
-    client1 = TestClient(app)
-    client1.headers["Authorization"] = f"Bearer {create_access_token(u1_id)}"
-    client2 = TestClient(app)
-    client2.headers["Authorization"] = f"Bearer {create_access_token(u2_id)}"
+    client1 = _registered_client(db_engine, "admin1@example.com", company_name="Company 1", role="admin")
+    client2 = _registered_client(db_engine, "admin2@example.com", company_name="Company 2", role="admin")
 
     try:
         upload = client1.post("/documents", files={"file": ("secret.md", b"secret", "text/markdown")})
@@ -438,3 +380,32 @@ def test_preview_hides_department_documents_from_members_outside_it(
 
     assert as_admin.status_code == 200
     assert as_member.status_code == 404
+
+
+def test_document_cap_per_company(admin_client, other_company_client, db_engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    monkeypatch.setattr(settings, "max_documents_per_company", 2)
+    _override_llm(_FakeLLM())
+    _override_store(VectorStore(persist_dir=str(tmp_path / "qdrant")))
+    other_admin = _registered_client(db_engine, "other-admin@example.com", company_name="Other Company", role="admin")
+
+    def upload(client, n: int):
+        return client.post("/documents", files={"file": (f"{n}.md", f"# Doc {n}".encode(), "text/markdown")})
+
+    try:
+        uploads = [upload(admin_client, n) for n in range(3)]
+        elsewhere = upload(other_admin, 0)  # the cap is per company
+        document_id = uploads[0].json()["id"]
+        admin_client.delete(f"/documents/{document_id}")
+        after_delete = upload(admin_client, 3)
+
+        monkeypatch.setattr(settings, "max_documents_per_company", 0)  # 0 = unlimited
+        unlimited = [upload(admin_client, n) for n in (4, 5)]
+    finally:
+        _clear_overrides()
+
+    assert [r.status_code for r in uploads] == [202, 202, 403]
+    assert "Document limit reached" in uploads[2].json()["detail"]
+    assert elsewhere.status_code == 202
+    assert after_delete.status_code == 202
+    assert [r.status_code for r in unlimited] == [202, 202]

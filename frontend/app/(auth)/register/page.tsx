@@ -2,57 +2,51 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { Button, Card, Input, Label } from "@/components/ui";
 
+// Creates the account only; a company comes after (create one, or join through an invite link).
 export default function RegisterPage() {
-  const [companyName, setCompanyName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const { register } = useAuth();
+  const [isPending, setIsPending] = useState(false);
+  const { register, login } = useAuth();
+  const router = useRouter();
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      await register(companyName.trim(), email.trim(), password, displayName.trim());
-      setIsSubmitted(true);
+      const result = await register(email.trim(), password, displayName.trim());
+      if (result.approvalStatus === "approved") {
+        await login(email.trim(), password);
+        router.replace("/");
+        return;
+      }
+      setIsPending(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsSubmitting(false);
     }
+    setIsSubmitting(false);
   }
 
-  if (isSubmitted) {
+  if (isPending) {
     return (
       <Card className="w-full max-w-sm space-y-5 p-6 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gold/10 text-gold">
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
         <div>
-          <h1 className="text-xl font-semibold text-text-primary">Registration Submitted</h1>
+          <h1 className="text-xl font-semibold text-text-primary">Registration submitted</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            Your account for <span className="font-medium text-text-primary">{companyName}</span> is pending administrator approval.
-          </p>
-          <p className="mt-2 text-xs text-text-tertiary">
-            You will be able to log in once an administrator approves your request.
+            This instance approves new accounts by hand. You can log in once the administrator approves yours.
           </p>
         </div>
-        <div className="pt-2">
-          <Link href="/login" className="block w-full">
-            <Button variant="primary" className="w-full">
-              Go to Log in
-            </Button>
-          </Link>
-        </div>
+        <Link href="/login" className="block w-full">
+          <Button className="w-full">Go to log in</Button>
+        </Link>
       </Card>
     );
   }
@@ -61,20 +55,9 @@ export default function RegisterPage() {
     <Card className="w-full max-w-sm space-y-5 p-6">
       <div>
         <h1 className="text-xl font-semibold text-text-primary">Register</h1>
-        <p className="mt-1 text-sm text-text-secondary">Create a new company account.</p>
+        <p className="mt-1 text-sm text-text-secondary">Create your account. One login works for all your companies.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-1">
-          <Label htmlFor="companyName">Company Name</Label>
-          <Input
-            id="companyName"
-            type="text"
-            required
-            placeholder="Acme Corp"
-            value={companyName}
-            onChange={(event) => setCompanyName(event.target.value)}
-          />
-        </div>
         <div className="space-y-1">
           <Label htmlFor="displayName">Name</Label>
           <Input
@@ -114,7 +97,7 @@ export default function RegisterPage() {
         </div>
         {error && <p className="text-sm text-status-void">{error}</p>}
         <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? "Submitting…" : "Register"}
+          {isSubmitting ? "Creating account…" : "Register"}
         </Button>
       </form>
       <p className="text-sm text-text-secondary">

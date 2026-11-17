@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { fetchProtectedFile } from "@/lib/api";
+import { useCompany } from "./CompanyProvider";
 
 // Loads an image that sits behind auth (document images, chat attachments) through an
 // authenticated fetch, since a plain <img src> can't send the Bearer header.
 export function AuthImage({ src, alt, className = "" }: { src: string; alt: string; className?: string }) {
+  const { slug } = useCompany();
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
     let cancelled = false;
-    fetchProtectedFile(src)
+    fetchProtectedFile(slug, src)
       .then((u) => {
         objectUrl = u;
         if (cancelled) URL.revokeObjectURL(u);
@@ -23,7 +25,7 @@ export function AuthImage({ src, alt, className = "" }: { src: string; alt: stri
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [src]);
+  }, [slug, src]);
 
   if (failed) {
     return (

@@ -1,226 +1,170 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import AuthLayout from "../app/(auth)/layout";
 import LoginPage from "../app/(auth)/login/page";
 import RegisterPage from "../app/(auth)/register/page";
-import AdminPage from "../app/(app)/admin/page";
+import Home from "../app/(app)/page";
+import CompanyLayout from "../app/(app)/[slug]/layout";
+import CompanyAdminPage from "../app/(app)/[slug]/admin/page";
+import InstanceAdminPage from "../app/(app)/instance/page";
+import InvitePage from "../app/invite/[token]/page";
+import { CompanyProvider } from "./CompanyProvider";
+import type { Me, MyCompany } from "@/lib/api";
 
-// Mock next/navigation
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: vi.fn(),
-    replace: vi.fn(),
-  }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/acme",
+  useParams: () => ({}),
 }));
 
-// Mock AuthProvider
-const mockUseAuth = vi.fn(() => ({
-  token: null,
-  isReady: true,
-  isAdmin: true,
-  isSuperAdmin: false,
-  isMember: false,
-  user: {
-    email: "admin@acme.com",
-    role: "admin",
-    displayName: "Admin",
-    companyName: "Acme",
-    approvalStatus: "approved",
-    companyId: "c1",
-    departmentId: null,
-    departmentName: null,
-  },
-  login: vi.fn(),
-  register: vi.fn(),
-  logout: vi.fn(),
+// The company layout's chrome is covered by its own tests.
+vi.mock("./Sidebar", () => ({ Sidebar: () => null }));
+vi.mock("./ConversationsProvider", () => ({
+  ConversationsProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
+
+// React's `use` reads an already-settled thenable synchronously, so SSR doesn't suspend.
+function settled<T>(value: T): Promise<T> {
+  return Object.assign(Promise.resolve(value), { status: "fulfilled", value });
+}
+
+function company(overrides: Partial<MyCompany> = {}): MyCompany {
+  return { id: "c1", name: "Acme", slug: "acme", status: "active", role: "admin", departmentId: null, departmentName: null, ...overrides };
+}
+
+function me(overrides: Partial<Me> = {}): Me {
+  return { id: "u1", email: "jane@acme.com", displayName: "Jane", isInstanceAdmin: false, approvalStatus: "approved", companies: [company()], ...overrides };
+}
+
+let auth: { token: string | null; user: Me | null };
+beforeEach(() => {
+  auth = { token: "t", user: me() };
+});
 
 vi.mock("@/components/AuthProvider", () => ({
-  useAuth: () => mockUseAuth(),
-}));
-
-// Mock API
-vi.mock("@/lib/api", () => ({
-  ADMIN_REQUIRED: "admin_required",
-  getStats: vi.fn().mockResolvedValue({
-    documentCount: 42,
-    estimatedCostUsd: 1.2345,
-    messagesPerDay: [{ date: "2026-08-01", count: 10 }],
-    documentsPerUser: [{ email: "user@example.com", count: 5 }],
-    costPerDay: [{ date: "2026-08-01", costUsd: 0.5 }],
+  useAuth: () => ({
+    ...auth,
+    isReady: true,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
   }),
-  listPendingUsers: vi.fn().mockResolvedValue([
-    {
-      id: "u1",
-      email: "pending@acme.com",
-      displayName: "Pending Admin",
-      role: "admin",
-      approvalStatus: "pending",
-      companyId: "c1",
-      companyName: "Acme Corp",
-      departmentId: null,
-      createdAt: "2026-08-25T00:00:00Z",
-    },
-  ]),
-  approveUser: vi.fn().mockResolvedValue({}),
-  rejectUser: vi.fn().mockResolvedValue({}),
-  listCompanies: vi.fn().mockResolvedValue([
-    {
-      id: "c1",
-      name: "Acme Corp",
-      status: "active",
-      createdAt: "2026-08-25T00:00:00Z",
-      updatedAt: "2026-08-25T00:00:00Z",
-    },
-  ]),
-  suspendCompany: vi.fn().mockResolvedValue({}),
-  activateCompany: vi.fn().mockResolvedValue({}),
-  listDepartments: vi.fn().mockResolvedValue([
-    {
-      id: "d1",
-      name: "Engineering",
-      companyId: "c1",
-      createdAt: "2026-08-25T00:00:00Z",
-    },
-  ]),
-  createDepartment: vi.fn().mockResolvedValue({}),
-  deleteDepartment: vi.fn().mockResolvedValue({}),
-  listTeamUsers: vi.fn().mockResolvedValue([
-    {
-      id: "u1",
-      email: "engineer@acme.com",
-      displayName: "Alice Engineer",
-      role: "member",
-      approvalStatus: "approved",
-      companyId: "c1",
-      departmentId: "d1",
-      departmentName: "Engineering",
-      createdAt: "2026-08-25T00:00:00Z",
-    },
-  ]),
-  listCompanyAdmins: vi.fn().mockResolvedValue([
-    {
-      id: "u2",
-      email: "demo@acme.com",
-      displayName: "Demo Admin",
-      role: "admin",
-      approvalStatus: "approved",
-      companyId: "c1",
-      companyName: "Acme Corp",
-      departmentId: null,
-      createdAt: "2026-08-25T00:00:00Z",
-    },
-  ]),
-  deleteSuperadminUser: vi.fn().mockResolvedValue({}),
-  createUser: vi.fn().mockResolvedValue({}),
-  updateUser: vi.fn().mockResolvedValue({}),
-  deleteUser: vi.fn().mockResolvedValue({}),
 }));
 
-describe("Auth and Admin Pages", () => {
-  describe("AuthLayout", () => {
-    it("renders with dark background, radial glow, and Wordmark", () => {
-      const html = renderToString(
-        createElement(AuthLayout, {}, createElement("div", null, "Child Content")),
-      );
-      expect(html).toContain("bg-surface-primary");
-      expect(html).toContain("radial-gradient");
-      expect(html).toContain("rgba(212,167,69,0.06)");
-      expect(html).toContain("nowledgeHub");
-      expect(html).toContain("Child Content");
-    });
+function inCompany(role: MyCompany["role"], element: React.ReactElement) {
+  return renderToString(<CompanyProvider company={company({ role })}>{element}</CompanyProvider>);
+}
+
+describe("auth pages", () => {
+  it("AuthLayout renders the branded shell around its child", () => {
+    auth.token = null;
+    const html = renderToString(createElement(AuthLayout, null, createElement("div", null, "Child Content")));
+    expect(html).toContain("radial-gradient");
+    expect(html).toContain("nowledgeHub");
+    expect(html).toContain("Child Content");
   });
 
-  describe("LoginPage", () => {
-    it("renders login form with new primitives and gold register link", () => {
-      const html = renderToString(createElement(LoginPage));
-      expect(html).toContain("Log in");
-      expect(html).toContain("bg-surface-input");
-      expect(html).toContain("bg-gold");
-      expect(html).toContain("text-gold");
-      expect(html).toContain("href=\"/register\"");
-    });
+  it("LoginPage renders the form and a register link", () => {
+    const html = renderToString(createElement(LoginPage, { searchParams: settled({}) }));
+    expect(html).toContain("Log in");
+    expect(html).toContain('href="/register"');
   });
 
-  describe("RegisterPage", () => {
-    it("renders register form with new primitives and gold login link", () => {
-      const html = renderToString(createElement(RegisterPage));
-      expect(html).toContain("Register");
-      expect(html).toContain("Company Name");
-      expect(html).toContain("Name");
-      expect(html).toContain("Email");
-      expect(html).toContain("Password");
-      expect(html).toContain("bg-surface-input");
-      expect(html).toContain("bg-gold");
-      expect(html).toContain("text-gold");
-      expect(html).toContain("href=\"/login\"");
-    });
+  it("RegisterPage asks for an account only, no company", () => {
+    const html = renderToString(createElement(RegisterPage));
+    expect(html).toContain("Register");
+    expect(html).toContain("Email");
+    expect(html).toContain("Password");
+    expect(html).not.toContain("Company");
+    expect(html).toContain('href="/login"');
+  });
+});
+
+describe("home", () => {
+  it("offers to create a company or ask for an invite when the user has none", () => {
+    auth.user = me({ companies: [] });
+    const html = renderToString(createElement(Home));
+    expect(html).toContain("not in a company yet");
+    expect(html).toContain("Create company");
+    expect(html).toContain("invite link");
+    expect(html).not.toContain('href="/instance"');
   });
 
-  describe("AdminPage", () => {
-    it("renders company admin tabs (Stats, Employees) when logged in as company admin", () => {
-      mockUseAuth.mockReturnValueOnce({
-        token: "test-token",
-        isReady: true,
-        isAdmin: true,
-        isSuperAdmin: false,
-        isMember: false,
-        user: {
-          email: "admin@acme.com",
-          role: "admin",
-          displayName: "Admin",
-          companyName: "Acme",
-          approvalStatus: "approved",
-          companyId: "c1",
-          departmentId: null,
-          departmentName: null,
-        },
-        login: vi.fn(),
-        register: vi.fn(),
-        logout: vi.fn(),
-      });
+  it("links instance admins to platform administration from the empty state", () => {
+    auth.user = me({ companies: [], isInstanceAdmin: true });
+    expect(renderToString(createElement(Home))).toContain('href="/instance"');
+  });
 
-      const html = renderToString(createElement(AdminPage));
-      expect(html).toContain("Admin");
-      expect(html).toContain("Stats");
-      expect(html).toContain("Employees");
-      expect(html).not.toContain("Pending Approvals");
-      expect(html).not.toContain("Companies");
-      expect(html).not.toContain("Company Admins");
-      expect(html).toContain("Usage across the vault, last 30 days.");
-    });
+  it("renders nothing while redirecting a user who has companies", () => {
+    expect(renderToString(createElement(Home))).toBe("");
+  });
+});
 
-    it("renders all 4 tabs for superadmin with Pending Approvals active", () => {
-      mockUseAuth.mockReturnValueOnce({
-        token: "super-token",
-        isReady: true,
-        isAdmin: true,
-        isSuperAdmin: true,
-        isMember: false,
-        user: {
-          email: "super@platform.com",
-          role: "superadmin",
-          displayName: "Super Admin",
-          companyName: null,
-          approvalStatus: "approved",
-          companyId: null,
-          departmentId: null,
-          departmentName: null,
-        },
-        login: vi.fn(),
-        register: vi.fn(),
-        logout: vi.fn(),
-      });
+describe("company layout", () => {
+  const render = (slug: string) =>
+    renderToString(
+      <CompanyLayout params={settled({ slug })}>
+        <main>page body</main>
+      </CompanyLayout>,
+    );
 
-      const html = renderToString(createElement(AdminPage));
-      expect(html).toContain("Admin");
-      expect(html).toContain("Pending Approvals");
-      expect(html).toContain("Companies");
-      expect(html).toContain("Company Admins");
-      expect(html).toContain("Stats");
-      expect(html).not.toContain("Employees");
-      expect(html).toContain("Platform administration and organization management.");
-    });
+  it("renders the page for a member of the slug's company", () => {
+    expect(render("acme")).toContain("page body");
+  });
+
+  it("says not found for a company the user isn't a member of", () => {
+    const html = render("globex");
+    expect(html).toContain("Company not found");
+    expect(html).not.toContain("page body");
+  });
+
+  it("blocks only a suspended company", () => {
+    auth.user = me({ companies: [company({ status: "suspended" }), company({ id: "c2", slug: "globex", name: "Globex" })] });
+    expect(render("acme")).toContain("Company suspended");
+    expect(render("globex")).toContain("page body");
+  });
+});
+
+describe("company admin page", () => {
+  it("gives the owner a Settings tab", () => {
+    const html = inCompany("owner", createElement(CompanyAdminPage));
+    expect(html).toContain("Members");
+    expect(html).toContain("Departments");
+    expect(html).toContain("Settings");
+  });
+
+  it("gives an admin everything but Settings", () => {
+    const html = inCompany("admin", createElement(CompanyAdminPage));
+    expect(html).toContain("Members");
+    expect(html).not.toContain("Settings");
+  });
+
+  it("renders nothing for a member", () => {
+    expect(inCompany("member", createElement(CompanyAdminPage))).toBe("");
+  });
+});
+
+describe("instance admin page", () => {
+  it("is shown to instance admins", () => {
+    auth.user = me({ isInstanceAdmin: true });
+    const html = renderToString(createElement(InstanceAdminPage));
+    expect(html).toContain("Instance admin");
+    expect(html).toContain("Users");
+    expect(html).toContain("Companies");
+  });
+
+  it("renders nothing for everyone else, even company owners", () => {
+    auth.user = me({ companies: [company({ role: "owner" })] });
+    expect(renderToString(createElement(InstanceAdminPage))).toBe("");
+  });
+});
+
+describe("invite page", () => {
+  it("loads the invite before showing what to do", () => {
+    auth = { token: null, user: null };
+    const html = renderToString(createElement(InvitePage, { params: settled({ token: "tok" }) }));
+    expect(html).toContain("Loading invite");
   });
 });

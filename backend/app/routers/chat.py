@@ -1,16 +1,17 @@
 import json
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Engine
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.db import get_engine
-from app.deps import CurrentUserDep
-from app.models.company import Company
+from app.config import settings
+from app.deps import MemberDep
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.rate_limit import limiter
@@ -19,6 +20,7 @@ from app.services.llm import LLMProvider, get_llm_provider
 from app.services.rag import HistoryTurn, stream_answer
 from ingestion.index import VectorStore, get_vector_store
 
+# Mounted under /companies/{slug}.
 router = APIRouter()
 
 _MAX_MESSAGE_LENGTH = 4000
@@ -39,7 +41,7 @@ def _get_or_create_conversation(
     session: Session,
     conversation_id: uuid.UUID | None,
     user_id: uuid.UUID,
-    company_id: uuid.UUID | None = None,
+    company_id: uuid.UUID,
 ) -> Conversation:
     if conversation_id is None:
         conversation = Conversation(user_id=user_id, company_id=company_id)
@@ -49,7 +51,7 @@ def _get_or_create_conversation(
         return conversation
 
     conversation = session.get(Conversation, conversation_id)
-    if conversation is None or conversation.user_id != user_id or (company_id and conversation.company_id != company_id):
+    if conversation is None or conversation.user_id != user_id or conversation.company_id != company_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
 
@@ -161,7 +163,7 @@ def _event_stream(
 @limiter.limit("20/minute")
 def chat(
     request: Request,
-    current_user: CurrentUserDep,
+    ctx: MemberDep,
     message: str = Form("", max_length=_MAX_MESSAGE_LENGTH),
     conversation_id: uuid.UUID | None = Form(None),
     files: list[UploadFile] = File(default=[]),
@@ -174,15 +176,30 @@ def chat(
     if not question and not uploads:
         raise HTTPException(status_code=422, detail="Type a message or attach a file.")
 
-    company_name = "KnowledgeHub"
+    # Plain values: the stream outlives the request's session.
+    company_id, company_name = ctx.company.id, ctx.company.name
+    role, department_id = ctx.role, ctx.membership.department_id
+
     with Session(engine) as session:
-        if current_user.company_id:
-            company = session.get(Company, current_user.company_id)
-            if company:
-                company_name = company.name
-        conversation = _get_or_create_conversation(
-            session, conversation_id, current_user.id, current_user.company_id
-        )
+        if settings.max_messages_per_company_per_day:
+            sent = session.exec(
+                select(func.count())
+                .select_from(Message)
+                .join(Conversation, Message.conversation_id == Conversation.id)
+                .where(
+                    Conversation.company_id == company_id,
+                    Message.role == "user",
+                    Message.created_at >= datetime.now(timezone.utc) - timedelta(days=1),
+                )
+            ).one()
+            if sent >= settings.max_messages_per_company_per_day:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Daily message limit reached: this instance allows "
+                    f"{settings.max_messages_per_company_per_day} messages per company in 24 hours. "
+                    "Try again later.",
+                )
+        conversation = _get_or_create_conversation(session, conversation_id, ctx.user.id, company_id)
         recent = _recent_messages(session, conversation.id, _HISTORY_LIMIT)
         if conversation.title == "New chat":
             conversation.title = _derive_title(question or uploads[0][0])
@@ -202,11 +219,10 @@ def chat(
             question,
             llm=llm,
             vector_store=vector_store,
+            company_id=str(company_id),
             company_name=company_name,
-            company_id=str(current_user.company_id) if current_user.company_id else None,
-            department_id=str(current_user.department_id) if current_user.department_id else None,
-            department=current_user.department,
-            role=current_user.role,
+            department_id=str(department_id) if department_id else None,
+            role=role,
             history=history,
             attachments=contents,
         )

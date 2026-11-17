@@ -4,19 +4,28 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Response, status
 from sqlmodel import select
 
-from app.deps import CurrentUserDep, SessionDep
+from app.deps import CompanyContext, MemberDep, SessionDep
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.conversation import ConversationRead, ConversationUpdate, MessageRead
 from app.services import attachments, storage
 from ingestion.pipeline import delete_files
 
+# Mounted under /companies/{slug}. A conversation belongs to one member in one company.
 router = APIRouter()
 
 
+def _own(conversation: Conversation | None, ctx: CompanyContext) -> bool:
+    return (
+        conversation is not None
+        and conversation.user_id == ctx.user.id
+        and conversation.company_id == ctx.company.id
+    )
+
+
 @router.post("/conversations", response_model=ConversationRead)
-def create_conversation(session: SessionDep, current_user: CurrentUserDep) -> Conversation:
-    conversation = Conversation(user_id=current_user.id, company_id=current_user.company_id)
+def create_conversation(session: SessionDep, ctx: MemberDep) -> Conversation:
+    conversation = Conversation(user_id=ctx.user.id, company_id=ctx.company.id)
     session.add(conversation)
     session.commit()
     session.refresh(conversation)
@@ -32,14 +41,10 @@ def _derive_title(message: str) -> str:
 
 
 @router.get("/conversations", response_model=list[ConversationRead])
-def list_conversations(session: SessionDep, current_user: CurrentUserDep) -> list[Conversation]:
-    conditions = [Conversation.user_id == current_user.id]
-    if current_user.company_id:
-        conditions.append(Conversation.company_id == current_user.company_id)
-
+def list_conversations(session: SessionDep, ctx: MemberDep) -> list[Conversation]:
     statement = (
         select(Conversation)
-        .where(*conditions)
+        .where(Conversation.user_id == ctx.user.id, Conversation.company_id == ctx.company.id)
         .order_by(Conversation.updated_at.desc())
     )
     conversations = list(session.exec(statement))
@@ -62,13 +67,9 @@ def list_conversations(session: SessionDep, current_user: CurrentUserDep) -> lis
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
-def list_messages(conversation_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> list[Message]:
+def list_messages(conversation_id: uuid.UUID, session: SessionDep, ctx: MemberDep) -> list[Message]:
     conversation = session.get(Conversation, conversation_id)
-    if (
-        conversation is None
-        or conversation.user_id != current_user.id
-        or (current_user.company_id and conversation.company_id != current_user.company_id)
-    ):
+    if not _own(conversation, ctx):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     statement = (
@@ -83,14 +84,12 @@ def get_attachment(
     message_id: uuid.UUID,
     index: int,
     session: SessionDep,
-    current_user: CurrentUserDep,
+    ctx: MemberDep,
 ) -> Response:
     conversation = session.get(Conversation, conversation_id)
     message = session.get(Message, message_id)
     if (
-        conversation is None
-        or conversation.user_id != current_user.id
-        or (current_user.company_id and conversation.company_id != current_user.company_id)
+        not _own(conversation, ctx)
         or message is None
         or message.conversation_id != conversation_id
         or not 0 <= index < len(message.attachments or [])
@@ -112,14 +111,10 @@ def update_conversation(
     conversation_id: uuid.UUID,
     payload: ConversationUpdate,
     session: SessionDep,
-    current_user: CurrentUserDep,
+    ctx: MemberDep,
 ) -> Conversation:
     conversation = session.get(Conversation, conversation_id)
-    if (
-        conversation is None
-        or conversation.user_id != current_user.id
-        or (current_user.company_id and conversation.company_id != current_user.company_id)
-    ):
+    if not _own(conversation, ctx):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     new_title = payload.title.strip()
@@ -137,14 +132,10 @@ def update_conversation(
 def delete_conversation(
     conversation_id: uuid.UUID,
     session: SessionDep,
-    current_user: CurrentUserDep,
+    ctx: MemberDep,
 ) -> None:
     conversation = session.get(Conversation, conversation_id)
-    if (
-        conversation is None
-        or conversation.user_id != current_user.id
-        or (current_user.company_id and conversation.company_id != current_user.company_id)
-    ):
+    if not _own(conversation, ctx):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     files = attachments.locations(

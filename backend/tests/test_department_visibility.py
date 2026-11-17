@@ -1,16 +1,16 @@
 import json
 
-from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.main import app
 from app.models.company import Company
 from app.models.department import Department
+from app.models.membership import Membership
 from app.models.user import User
-from app.services.auth import create_access_token, hash_password
+from app.services.auth import hash_password
 from app.services.llm import TokenUsage, get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
-from tests.conftest import _override_db
+from tests.conftest import _override_db, client_for
 
 
 class _FakeLLM:
@@ -27,7 +27,7 @@ class _FakeLLM:
 def _setup_test_tenancy(db_engine):
     _override_db(db_engine)
     with Session(db_engine, expire_on_commit=False) as session:
-        company = Company(name="Visibility Corp", status="active")
+        company = Company(name="Visibility Corp", slug="visibility-corp", status="active")
         session.add(company)
         session.commit()
 
@@ -36,45 +36,28 @@ def _setup_test_tenancy(db_engine):
         session.add_all([dept_eng, dept_hr])
         session.commit()
 
-        admin = User(
-            email="admin@vis.com",
-            password_hash=hash_password("pw"),
-            role="admin",
-            approval_status="approved",
-            company_id=company.id,
-            department_id=dept_eng.id,
-        )
-        eng_member = User(
-            email="eng@vis.com",
-            password_hash=hash_password("pw"),
-            role="member",
-            approval_status="approved",
-            company_id=company.id,
-            department_id=dept_eng.id,
-        )
-        hr_member = User(
-            email="hr@vis.com",
-            password_hash=hash_password("pw"),
-            role="member",
-            approval_status="approved",
-            company_id=company.id,
-            department_id=dept_hr.id,
-        )
-        solo_member = User(
-            email="solo@vis.com",
-            password_hash=hash_password("pw"),
-            role="member",
-            approval_status="approved",
-            company_id=company.id,
-            department_id=None,
-        )
-        session.add_all([admin, eng_member, hr_member, solo_member])
-        session.commit()
+        def member(email, role, department):
+            user = User(email=email, password_hash=hash_password("pw"))
+            session.add(user)
+            session.commit()
+            session.add(
+                Membership(
+                    user_id=user.id,
+                    company_id=company.id,
+                    role=role,
+                    department_id=department.id if department else None,
+                )
+            )
+            session.commit()
+            return user
+
+        admin = member("admin@vis.com", "admin", dept_eng)
+        eng_member = member("eng@vis.com", "member", dept_eng)
+        hr_member = member("hr@vis.com", "member", dept_hr)
+        solo_member = member("solo@vis.com", "member", None)
 
     def make_client(user_id):
-        c = TestClient(app)
-        c.headers["Authorization"] = f"Bearer {create_access_token(user_id)}"
-        return c
+        return client_for(user_id, "visibility-corp")
 
     return {
         "admin_client": make_client(admin.id),

@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { Sidebar } from "./Sidebar";
 
-let mockPathname = "/chat/conv-123";
+let mockPathname = "/acme/chat/conv-123";
 
 // Mock hooks used in Sidebar
 vi.mock("next/navigation", () => ({
@@ -15,10 +15,27 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+let mockRole: "owner" | "admin" | "member" = "admin";
+let mockIsInstanceAdmin = false;
+const companies = [
+  { id: "c1", name: "Acme", slug: "acme", status: "active", role: "admin", departmentId: null, departmentName: null },
+  { id: "c2", name: "Globex", slug: "globex", status: "active", role: "member", departmentId: null, departmentName: null },
+];
+
 vi.mock("./AuthProvider", () => ({
   useAuth: () => ({
-    isAdmin: true,
+    user: { id: "u1", email: "me@acme.com", isInstanceAdmin: mockIsInstanceAdmin, companies },
     logout: vi.fn(),
+    refreshUser: vi.fn(),
+  }),
+}));
+
+vi.mock("./CompanyProvider", () => ({
+  useCompany: () => ({
+    company: { ...companies[0], role: mockRole },
+    slug: "acme",
+    isAdmin: mockRole !== "member",
+    isOwner: mockRole === "owner",
   }),
 }));
 
@@ -44,7 +61,7 @@ vi.mock("./ConversationsProvider", () => ({
 
 describe("Sidebar component", () => {
   it("renders with dark chrome, wordmark, nav items, and active conversation on chat route", () => {
-    mockPathname = "/chat/conv-123";
+    mockPathname = "/acme/chat/conv-123";
     mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("bg-surface-overlay");
@@ -59,7 +76,7 @@ describe("Sidebar component", () => {
   });
 
   it("does not highlight conversations when on non-chat route like /knowledge", () => {
-    mockPathname = "/knowledge";
+    mockPathname = "/acme/knowledge";
     mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Knowledge base");
@@ -70,7 +87,7 @@ describe("Sidebar component", () => {
   });
 
   it("includes collapse toggle button and mobile hamburger button", () => {
-    mockPathname = "/chat/conv-123";
+    mockPathname = "/acme/chat/conv-123";
     mockIsLoading = false;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Collapse sidebar");
@@ -78,12 +95,49 @@ describe("Sidebar component", () => {
   });
 
   it("renders skeleton placeholders when loading chat history", () => {
-    mockPathname = "/chat/conv-123";
+    mockPathname = "/acme/chat/conv-123";
     mockIsLoading = true;
     const html = renderToString(createElement(Sidebar));
     expect(html).toContain("Loading chat history");
     expect(html).toContain("animate-shimmer");
     expect(html).not.toContain("Active Chat");
     mockIsLoading = false;
+  });
+
+  it("links every company page under the current slug", () => {
+    mockPathname = "/acme/chat/conv-123";
+    const html = renderToString(createElement(Sidebar));
+    expect(html).toContain('href="/acme/knowledge"');
+    expect(html).toContain('href="/acme/admin"');
+    expect(html).toContain('href="/acme/chat/conv-456"');
+  });
+
+  it("offers a company switcher with every membership and a create option", () => {
+    mockIsInstanceAdmin = false;
+    const html = renderToString(createElement(Sidebar));
+    expect(html).toContain('value="/acme"');
+    expect(html).toContain('value="/globex"');
+    expect(html).toContain("Globex");
+    expect(html).toContain('value="/new"');
+    expect(html).not.toContain('value="/instance"');
+  });
+
+  it("shows platform administration only to instance admins", () => {
+    mockIsInstanceAdmin = true;
+    expect(renderToString(createElement(Sidebar))).toContain('value="/instance"');
+    mockIsInstanceAdmin = false;
+  });
+
+  it("drives role-dependent controls from the current membership", () => {
+    mockRole = "member";
+    let html = renderToString(createElement(Sidebar));
+    expect(html).not.toContain('href="/acme/admin"');
+    expect(html).toContain("Leave company");
+
+    mockRole = "owner";
+    html = renderToString(createElement(Sidebar));
+    expect(html).toContain('href="/acme/admin"');
+    expect(html).not.toContain("Leave company");
+    mockRole = "admin";
   });
 });

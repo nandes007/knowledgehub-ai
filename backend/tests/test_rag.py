@@ -36,7 +36,7 @@ def test_new_knowledge_replaces_stale_refusal_in_same_conversation():
     llm = HistoryAnchoringLLM()
     question = "How many vacation days do I get?"
 
-    first_tokens, first_sources, _ = stream_answer(question, llm=llm, vector_store=store)
+    first_tokens, first_sources, _ = stream_answer(question, company_id="comp-1", llm=llm, vector_store=store)
     first_answer = "".join(first_tokens)
     assert first_sources == []
     assert first_answer == "I don't have that in the knowledge base yet."
@@ -52,7 +52,7 @@ def test_new_knowledge_replaces_stale_refusal_in_same_conversation():
         {"role": "assistant", "content": first_answer, "has_sources": False},
     ]
     second_tokens, second_sources, _ = stream_answer(
-        question, llm=llm, vector_store=store, history=history
+        question, company_id="comp-1", llm=llm, vector_store=store, history=history
     )
 
     assert second_sources[0]["filename"] == "policy.md"
@@ -70,7 +70,7 @@ def test_grounded_previous_answer_remains_available_for_follow_up():
     }]
     llm = HistoryAnchoringLLM()
     tokens, _, _ = stream_answer(
-        "Does that include sick leave?",
+        "Does that include sick leave?", company_id="comp-1",
         llm=llm,
         vector_store=store,
         history=[

@@ -1,15 +1,17 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import Session, select
 
-from app.deps import CurrentUserDep, SessionDep
+from app.deps import AdminDep, SessionDep
 from app.models.conversation import Conversation
 from app.models.document import Document
 from app.models.message import Message
 from app.models.user import User
 
+# Mounted under /companies/{slug}.
 router = APIRouter()
 
 _STATS_WINDOW_DAYS = 30
@@ -20,79 +22,42 @@ _STATS_WINDOW_DAYS = 30
 _PRICE_PER_1K_TOKENS_USD = 0.0003
 
 
-@router.get("/stats")
-def get_stats(session: SessionDep, current_user: CurrentUserDep) -> dict:
-    if current_user.role not in ("admin", "superadmin"):
-        raise HTTPException(status_code=403, detail="Admin access required")
-
+def usage_stats(session: Session, company_id: uuid.UUID | None = None) -> dict:
+    """Usage for one company, or for the whole instance when company_id is None."""
     since = datetime.now(timezone.utc) - timedelta(days=_STATS_WINDOW_DAYS)
     day_column = func.date(Message.created_at)
 
-    if current_user.role == "superadmin":
-        rows = session.exec(
-            select(day_column, func.count())
-            .where(Message.created_at >= since)
-            .group_by(day_column)
-            .order_by(day_column)
-        ).all()
+    def messages(statement):
+        if company_id is None:
+            return statement
+        return statement.join(Conversation, Message.conversation_id == Conversation.id).where(
+            Conversation.company_id == company_id
+        )
 
-        document_count = session.exec(select(func.count()).select_from(Document)).one()
-        total_tokens = session.exec(
-            select(func.coalesce(func.sum(Message.token_count), 0)).where(Message.role == "assistant")
-        ).one()
+    def documents(statement):
+        return statement if company_id is None else statement.where(Document.company_id == company_id)
 
-        documents_per_user = session.exec(
-            select(User.email, func.count(Document.id))
-            .join(Document, Document.uploaded_by == User.id)
-            .group_by(User.email)
-            .order_by(func.count(Document.id).desc(), User.email)
-        ).all()
-
-        tokens_per_day = session.exec(
-            select(day_column, func.coalesce(func.sum(Message.token_count), 0))
-            .where(Message.created_at >= since, Message.role == "assistant")
-            .group_by(day_column)
-            .order_by(day_column)
-        ).all()
-    else:
-        company_id = current_user.company_id
-        rows = session.exec(
-            select(day_column, func.count())
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(Conversation.company_id == company_id, Message.created_at >= since)
-            .group_by(day_column)
-            .order_by(day_column)
-        ).all()
-
-        document_count = session.exec(
-            select(func.count()).select_from(Document).where(Document.company_id == company_id)
-        ).one()
-
-        total_tokens = session.exec(
-            select(func.coalesce(func.sum(Message.token_count), 0))
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(Conversation.company_id == company_id, Message.role == "assistant")
-        ).one()
-
-        documents_per_user = session.exec(
-            select(User.email, func.count(Document.id))
-            .join(Document, Document.uploaded_by == User.id)
-            .where(Document.company_id == company_id)
-            .group_by(User.email)
-            .order_by(func.count(Document.id).desc(), User.email)
-        ).all()
-
-        tokens_per_day = session.exec(
-            select(day_column, func.coalesce(func.sum(Message.token_count), 0))
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(
-                Conversation.company_id == company_id,
-                Message.created_at >= since,
-                Message.role == "assistant",
-            )
-            .group_by(day_column)
-            .order_by(day_column)
-        ).all()
+    rows = session.exec(
+        messages(select(day_column, func.count()))
+        .where(Message.created_at >= since)
+        .group_by(day_column)
+        .order_by(day_column)
+    ).all()
+    document_count = session.exec(documents(select(func.count()).select_from(Document))).one()
+    total_tokens = session.exec(
+        messages(select(func.coalesce(func.sum(Message.token_count), 0))).where(Message.role == "assistant")
+    ).one()
+    documents_per_user = session.exec(
+        documents(select(User.email, func.count(Document.id)).join(Document, Document.uploaded_by == User.id))
+        .group_by(User.email)
+        .order_by(func.count(Document.id).desc(), User.email)
+    ).all()
+    tokens_per_day = session.exec(
+        messages(select(day_column, func.coalesce(func.sum(Message.token_count), 0)))
+        .where(Message.created_at >= since, Message.role == "assistant")
+        .group_by(day_column)
+        .order_by(day_column)
+    ).all()
 
     return {
         "messages_per_day": [{"date": str(day), "count": count} for day, count in rows],
@@ -101,6 +66,11 @@ def get_stats(session: SessionDep, current_user: CurrentUserDep) -> dict:
         "documents_per_user": [{"email": email, "count": count} for email, count in documents_per_user],
         "cost_per_day": [{"date": str(day), "cost_usd": _cost_usd(tokens)} for day, tokens in tokens_per_day],
     }
+
+
+@router.get("/stats")
+def get_stats(session: SessionDep, ctx: AdminDep) -> dict:
+    return usage_stats(session, ctx.company.id)
 
 
 def _cost_usd(tokens: int) -> float:

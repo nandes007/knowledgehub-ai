@@ -1,31 +1,35 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  activateCompany,
+  acceptInvite,
   approveUser,
+  createCompany,
   createConversation,
   createDepartment,
-  createUser,
+  createInvite,
   deleteConversation,
   deleteDepartment,
   deleteDocument,
-  deleteSuperadminUser,
-  deleteUser,
+  deleteInstanceUser,
+  fetchProtectedFile,
   getConversationMessages,
+  getInvitePreview,
   getMe,
   getStats,
-  listCompanies,
   listConversations,
   listDepartments,
   listDocuments,
-  listPendingUsers,
-  listTeamUsers,
+  listInstanceCompanies,
+  listInstanceUsers,
+  listMembers,
   loginAccount,
   registerAccount,
-  rejectUser,
+  removeMember,
   renameConversation,
+  roleAtLeast,
   sendChatMessage,
-  suspendCompany,
-  updateUser,
+  setCompanyStatus,
+  transferOwnership,
+  updateMember,
   uploadDocument,
 } from "./api";
 import { clearToken, getToken, setToken } from "./auth";
@@ -52,7 +56,7 @@ describe("sendChatMessage", () => {
     const fetchMock = vi.fn().mockResolvedValue(sseResponse(body));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await sendChatMessage("How many vacation days?");
+    const result = await sendChatMessage("acme", "How many vacation days?");
 
     expect(result.answer).toBe("Employees get 20 days.");
     expect(result.sources).toEqual([
@@ -67,10 +71,10 @@ describe("sendChatMessage", () => {
     const fetchMock = vi.fn().mockResolvedValue(sseResponse(body));
     vi.stubGlobal("fetch", fetchMock);
 
-    await sendChatMessage("hello", "existing-conversation");
+    await sendChatMessage("acme", "hello", "existing-conversation");
 
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/chat");
+    expect(url).toContain("/companies/acme/chat");
     expect(options.method).toBe("POST");
     expect(options.body.get("message")).toBe("hello");
     expect(options.body.get("conversation_id")).toBe("existing-conversation");
@@ -85,7 +89,7 @@ describe("sendChatMessage", () => {
     const statuses: string[] = [];
     const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" });
 
-    await sendChatMessage("", undefined, undefined, [file], (text) => statuses.push(text));
+    await sendChatMessage("acme", "", undefined, undefined, [file], (text) => statuses.push(text));
 
     const form = fetchMock.mock.calls[0][1].body as FormData;
     expect((form.getAll("files")[0] as File).name).toBe("report.pdf");
@@ -98,7 +102,7 @@ describe("sendChatMessage", () => {
       .mockResolvedValue(new Response(JSON.stringify({ detail: "Attach at most 5 files per message." }), { status: 400 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(sendChatMessage("hi")).rejects.toThrow("Attach at most 5 files per message.");
+    await expect(sendChatMessage("acme", "hi")).rejects.toThrow("Attach at most 5 files per message.");
   });
 
   it("throws with the error event's message on a mid-stream failure", async () => {
@@ -106,21 +110,21 @@ describe("sendChatMessage", () => {
     const fetchMock = vi.fn().mockResolvedValue(sseResponse(body));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(sendChatMessage("hi")).rejects.toThrow("upstream LLM timed out");
+    await expect(sendChatMessage("acme", "hi")).rejects.toThrow("upstream LLM timed out");
   });
 
   it("throws when the HTTP request itself fails", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Not Found", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(sendChatMessage("hi")).rejects.toThrow("404");
+    await expect(sendChatMessage("acme", "hi")).rejects.toThrow("404");
   });
 
   it("throws a friendly error when the server is unreachable", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(sendChatMessage("hi")).rejects.toThrow(
+    await expect(sendChatMessage("acme", "hi")).rejects.toThrow(
       "Couldn't reach the server. Check your connection and try again.",
     );
   });
@@ -134,7 +138,7 @@ describe("sendChatMessage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const chunks: string[] = [];
-    const result = await sendChatMessage("How many vacation days?", undefined, (text) => chunks.push(text));
+    const result = await sendChatMessage("acme", "How many vacation days?", undefined, (text) => chunks.push(text));
 
     expect(chunks).toEqual(["Employees ", "get 20 days."]);
     expect(result.answer).toBe("Employees get 20 days.");
@@ -153,7 +157,7 @@ describe("sendChatMessage", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(stream));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(sendChatMessage("hi")).rejects.toThrow(
+    await expect(sendChatMessage("acme", "hi")).rejects.toThrow(
       "Couldn't reach the server. Check your connection and try again.",
     );
   });
@@ -168,27 +172,27 @@ describe("listConversations", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await listConversations();
+    const result = await listConversations("acme");
 
     expect(result).toEqual([
       { id: "c1", title: "Vacation policy" },
       { id: "c2", title: "New chat" },
     ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/conversations");
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/conversations");
   });
 
   it("throws when the request fails", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("error", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listConversations()).rejects.toThrow("500");
+    await expect(listConversations("acme")).rejects.toThrow("500");
   });
 
   it("throws a friendly error when the server is unreachable", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listConversations()).rejects.toThrow(
+    await expect(listConversations("acme")).rejects.toThrow(
       "Couldn't reach the server. Check your connection and try again.",
     );
   });
@@ -200,11 +204,11 @@ describe("createConversation", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await createConversation();
+    const result = await createConversation("acme");
 
     expect(result).toEqual({ id: "c3", title: "New chat" });
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/conversations");
+    expect(url).toContain("/companies/acme/conversations");
     expect(options.method).toBe("POST");
   });
 });
@@ -215,11 +219,11 @@ describe("renameConversation", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await renameConversation("c1", "New Title");
+    const result = await renameConversation("acme", "c1", "New Title");
 
     expect(result).toEqual({ id: "c1", title: "New Title" });
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/conversations/c1");
+    expect(url).toContain("/companies/acme/conversations/c1");
     expect(options.method).toBe("PATCH");
     expect(JSON.parse(options.body)).toEqual({ title: "New Title" });
   });
@@ -228,7 +232,7 @@ describe("renameConversation", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("error", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(renameConversation("c-missing", "Title")).rejects.toThrow("404");
+    await expect(renameConversation("acme", "c-missing", "Title")).rejects.toThrow("404");
   });
 });
 
@@ -237,10 +241,10 @@ describe("deleteConversation", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await deleteConversation("c1");
+    await deleteConversation("acme", "c1");
 
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/conversations/c1");
+    expect(url).toContain("/companies/acme/conversations/c1");
     expect(options.method).toBe("DELETE");
   });
 
@@ -248,7 +252,7 @@ describe("deleteConversation", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("error", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(deleteConversation("c-missing")).rejects.toThrow("404");
+    await expect(deleteConversation("acme", "c-missing")).rejects.toThrow("404");
   });
 });
 
@@ -274,7 +278,7 @@ describe("getConversationMessages", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await getConversationMessages("c1");
+    const result = await getConversationMessages("acme", "c1");
 
     expect(result).toEqual([
       {
@@ -292,14 +296,14 @@ describe("getConversationMessages", () => {
         attachments: [],
       },
     ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/conversations/c1/messages");
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/conversations/c1/messages");
   });
 
   it("throws a 404 when the conversation doesn't exist", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getConversationMessages("missing")).rejects.toThrow("404");
+    await expect(getConversationMessages("acme", "missing")).rejects.toThrow("404");
   });
 });
 
@@ -326,7 +330,7 @@ describe("listDocuments", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await listDocuments();
+    const result = await listDocuments("acme");
 
     expect(result).toEqual([
       {
@@ -346,14 +350,14 @@ describe("listDocuments", () => {
         createdAt: "2026-01-02T00:00:00Z",
       },
     ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/documents");
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/documents");
   });
 
   it("throws a friendly error when the server is unreachable", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listDocuments()).rejects.toThrow(
+    await expect(listDocuments("acme")).rejects.toThrow(
       "Couldn't reach the server. Check your connection and try again.",
     );
   });
@@ -392,11 +396,11 @@ describe("uploadDocument", () => {
     const file = new File(["contents"], "handbook.pdf", { type: "application/pdf" });
     const onProgress = vi.fn();
 
-    const result = await uploadDocument(file, { onProgress });
+    const result = await uploadDocument("acme", file, { onProgress });
 
     expect(result).toEqual(body);
     expect(onProgress).toHaveBeenCalledWith(0.5);
-    expect(sent.url).toContain("/documents");
+    expect(sent.url).toContain("/companies/acme/documents");
     expect(sent.method).toBe("POST");
     expect(sent.body).toBeInstanceOf(FormData);
     expect((sent.body as FormData).get("file")).toBe(file);
@@ -406,14 +410,14 @@ describe("uploadDocument", () => {
     stubXhr(400, JSON.stringify({ detail: "Unsupported file type '.exe'. Supported: PDF, DOCX, PPTX, MD." }));
     const file = new File(["contents"], "virus.exe", { type: "application/octet-stream" });
 
-    await expect(uploadDocument(file)).rejects.toThrow("Unsupported file type");
+    await expect(uploadDocument("acme", file)).rejects.toThrow("Unsupported file type");
   });
 
   it("falls back to a generic message when the error response has no detail", async () => {
     stubXhr(413, "too big");
     const file = new File(["contents"], "big.pdf", { type: "application/pdf" });
 
-    await expect(uploadDocument(file)).rejects.toThrow("413");
+    await expect(uploadDocument("acme", file)).rejects.toThrow("413");
   });
 });
 
@@ -422,10 +426,10 @@ describe("deleteDocument", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await deleteDocument("d1");
+    await deleteDocument("acme", "d1");
 
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/documents/d1");
+    expect(url).toContain("/companies/acme/documents/d1");
     expect(options.method).toBe("DELETE");
   });
 
@@ -433,7 +437,7 @@ describe("deleteDocument", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(deleteDocument("missing")).rejects.toThrow("404");
+    await expect(deleteDocument("acme", "missing")).rejects.toThrow("404");
   });
 });
 
@@ -443,7 +447,7 @@ describe("authenticated requests", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await listConversations();
+    await listConversations("acme");
 
     const [, options] = fetchMock.mock.calls[0];
     const headers = new Headers(options.headers);
@@ -454,7 +458,7 @@ describe("authenticated requests", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await listConversations();
+    await listConversations("acme");
 
     const [, options] = fetchMock.mock.calls[0];
     const headers = new Headers(options.headers);
@@ -467,7 +471,7 @@ describe("authenticated requests", () => {
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("window", { location: { href: "" } });
 
-    await expect(listConversations()).rejects.toThrow();
+    await expect(listConversations("acme")).rejects.toThrow();
 
     expect(getToken()).toBeNull();
   });
@@ -476,540 +480,284 @@ describe("authenticated requests", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listConversations()).rejects.toThrow();
+    await expect(listConversations("acme")).rejects.toThrow();
 
     expect(getToken()).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+function stubFetch(...responses: Response[]) {
+  const fetchMock = vi.fn();
+  for (const r of responses) fetchMock.mockResolvedValueOnce(r);
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function sentJson(fetchMock: ReturnType<typeof vi.fn>, call = 0): unknown {
+  return JSON.parse(fetchMock.mock.calls[call][1].body as string);
+}
+
+describe("company-scoped requests", () => {
+  it("put the slug from the caller into every company path", async () => {
+    const stats = { messages_per_day: [], document_count: 0, estimated_cost_usd: 0, documents_per_user: [], cost_per_day: [] };
+    const fetchMock = stubFetch(json([]), json([]), json(stats));
+    await listMembers("acme");
+    await listDepartments("other-co");
+    await getStats("acme");
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+      "http://localhost:8000/companies/acme/members",
+      "http://localhost:8000/companies/other-co/departments",
+      "http://localhost:8000/companies/acme/stats",
+    ]);
+  });
+
+  it("resolves protected document paths inside the company", async () => {
+    vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:x" });
+    const fetchMock = stubFetch(new Response("img"));
+    await fetchProtectedFile("acme", "/documents/d1/images/0");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8000/companies/acme/documents/d1/images/0");
+  });
+
+  it("surfaces the backend's limit message", async () => {
+    stubFetch(json({ detail: "Document limit reached: this instance allows 5 documents per company." }, 403));
+    await expect(createDepartment("acme", "Ops")).rejects.toThrow("Document limit reached");
+  });
+
+  it("falls back to a status message when there is no detail", async () => {
+    stubFetch(json({}, 500));
+    await expect(deleteDepartment("acme", "d1")).rejects.toThrow("Failed to delete department: 500");
+  });
+});
+
 describe("registerAccount", () => {
-  it("POSTs to /auth/register and returns the success message", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ message: "Registration pending approval" }), { status: 201 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await registerAccount("Acme Corp", "new@example.com", "password123", "Jane Doe");
-
-    expect(result).toEqual({ message: "Registration pending approval" });
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/auth/register");
-    expect(JSON.parse(options.body)).toEqual({
-      company_name: "Acme Corp",
+  it("POSTs account fields only, plus an invite token when given", async () => {
+    const fetchMock = stubFetch(json({ message: "Account created", approval_status: "approved", company_slug: "acme" }, 201));
+    const result = await registerAccount("new@example.com", "password123", "Jane", "tok");
+    expect(fetchMock.mock.calls[0][0]).toContain("/auth/register");
+    expect(sentJson(fetchMock)).toEqual({
       email: "new@example.com",
       password: "password123",
-      display_name: "Jane Doe",
+      display_name: "Jane",
+      invite_token: "tok",
     });
+    expect(result).toEqual({ message: "Account created", approvalStatus: "approved", companySlug: "acme" });
   });
 
-  it("throws a friendly message when the email is already registered", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "Email already registered" }), { status: 409 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(registerAccount("Acme Corp", "dup@example.com", "password123", "Jane")).rejects.toThrow(
-      "Email already registered",
-    );
+  it("reports a pending account in approval mode", async () => {
+    stubFetch(json({ message: "Registration pending approval", approval_status: "pending", company_slug: null }, 201));
+    expect((await registerAccount("a@b.co", "password123", "A")).approvalStatus).toBe("pending");
   });
 
-  it("throws a friendly message when the company name is already taken", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "Company name already taken" }), { status: 409 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("explains closed signup", async () => {
+    stubFetch(json({ detail: "Signup is closed. Ask a company admin for an invite link." }, 403));
+    await expect(registerAccount("a@b.co", "password123", "A")).rejects.toThrow("Signup is closed");
+  });
 
-    await expect(registerAccount("Existing Corp", "new@example.com", "password123", "Jane")).rejects.toThrow(
-      "Company name already taken",
-    );
+  it("throws a friendly message when the email is taken", async () => {
+    stubFetch(json({ detail: "Email already registered" }, 409));
+    await expect(registerAccount("a@b.co", "password123", "A")).rejects.toThrow("Email already registered");
   });
 });
 
 describe("loginAccount", () => {
-  it("POSTs to /auth/login and returns the access token", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ access_token: "existing-token", token_type: "bearer" }), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await loginAccount("user@example.com", "password123");
-
-    expect(result).toEqual({ accessToken: "existing-token" });
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/auth/login");
-    expect(JSON.parse(options.body)).toEqual({ email: "user@example.com", password: "password123" });
+  it("POSTs credentials and returns the access token", async () => {
+    const fetchMock = stubFetch(json({ access_token: "jwt", token_type: "bearer" }));
+    expect(await loginAccount("u@example.com", "pw")).toEqual({ accessToken: "jwt" });
+    expect(fetchMock.mock.calls[0][0]).toContain("/auth/login");
   });
 
-  it("throws a friendly message on invalid credentials", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "Invalid email or password" }), { status: 401 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(loginAccount("user@example.com", "wrong")).rejects.toThrow("Invalid email or password");
+  it("shows pending/rejected messages from the server", async () => {
+    stubFetch(json({ detail: "Your account is pending approval" }, 403));
+    await expect(loginAccount("u@example.com", "pw")).rejects.toThrow("Your account is pending approval");
   });
 
-  it("throws specific backend error detail on 403 pending approval", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "Your account is pending approval" }), { status: 403 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(loginAccount("user@example.com", "password123")).rejects.toThrow(
-      "Your account is pending approval",
-    );
-  });
-
-  it("throws specific backend error detail on 403 company suspended", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "Your company has been suspended" }), { status: 403 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(loginAccount("user@example.com", "password123")).rejects.toThrow(
-      "Your company has been suspended",
-    );
+  it("falls back on invalid credentials", async () => {
+    stubFetch(json({}, 401));
+    await expect(loginAccount("u@example.com", "pw")).rejects.toThrow("Invalid email or password.");
   });
 });
 
 describe("getMe", () => {
-  it("GETs /auth/me and camelCases the profile", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          email: "a@b.com",
-          display_name: "Ada",
-          role: "admin",
-          approval_status: "approved",
-          company_id: "c1",
-          company_name: "Acme",
-          department_id: "d1",
-          department_name: "Engineering",
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const me = await getMe();
-
-    expect(me).toEqual({
-      email: "a@b.com",
-      displayName: "Ada",
-      role: "admin",
-      approvalStatus: "approved",
-      companyId: "c1",
-      companyName: "Acme",
-      departmentId: "d1",
-      departmentName: "Engineering",
-    });
-    expect(fetchMock.mock.calls[0][0]).toContain("/auth/me");
-  });
-
-  it("throws when the profile can't be loaded", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 500 })));
-
-    await expect(getMe()).rejects.toThrow("Failed to load profile: 500");
-  });
-});
-
-describe("getStats", () => {
-  it("GETs /stats and camelCases the payload", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          messages_per_day: [{ date: "2026-08-01", count: 3 }],
-          document_count: 7,
-          estimated_cost_usd: 0.42,
-          documents_per_user: [{ email: "a@b.com", count: 4 }],
-          cost_per_day: [{ date: "2026-08-01", cost_usd: 0.12 }],
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const stats = await getStats();
-
-    expect(stats).toEqual({
-      messagesPerDay: [{ date: "2026-08-01", count: 3 }],
-      documentCount: 7,
-      estimatedCostUsd: 0.42,
-      documentsPerUser: [{ email: "a@b.com", count: 4 }],
-      costPerDay: [{ date: "2026-08-01", costUsd: 0.12 }],
-    });
-    expect(fetchMock.mock.calls[0][0]).toContain("/stats");
-  });
-
-  it("throws a friendly message when the user isn't an admin", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("forbidden", { status: 403 })));
-
-    await expect(getStats()).rejects.toThrow("Admin access required.");
-  });
-});
-
-describe("listPendingUsers", () => {
-  it("GETs /superadmin/users?approval_status=pending and maps users", async () => {
-    const mockData = [
-      {
+  it("returns the account with its memberships", async () => {
+    stubFetch(
+      json({
         id: "u1",
-        email: "alice@acme.com",
-        display_name: "Alice Admin",
-        role: "admin",
-        approval_status: "pending",
-        company_id: "c1",
-        company_name: "Acme Corp",
-        department_id: null,
-        created_at: "2026-08-24T00:00:00Z",
-      },
-    ];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const users = await listPendingUsers();
-
-    expect(users).toEqual([
-      {
-        id: "u1",
-        email: "alice@acme.com",
-        displayName: "Alice Admin",
-        role: "admin",
-        approvalStatus: "pending",
-        companyId: "c1",
-        companyName: "Acme Corp",
-        departmentId: null,
-        createdAt: "2026-08-24T00:00:00Z",
-      },
-    ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/superadmin/users?approval_status=pending");
-  });
-
-  it("throws on error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403 })));
-    await expect(listPendingUsers()).rejects.toThrow("Failed to load pending users: 403");
-  });
-});
-
-describe("approveUser", () => {
-  it("PATCHes /superadmin/users/{id}/approve and returns approved user", async () => {
-    const mockUser = {
-      id: "u1",
-      email: "alice@acme.com",
-      display_name: "Alice",
-      role: "admin",
-      approval_status: "approved",
-      company_id: "c1",
-      company_name: "Acme Corp",
-      department_id: null,
-      created_at: "2026-08-24T00:00:00Z",
-    };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await approveUser("u1");
-
-    expect(result.approvalStatus).toBe("approved");
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/superadmin/users/u1/approve");
-    expect(options.method).toBe("PATCH");
-  });
-
-  it("throws when approval fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "User not found" }), { status: 404 })),
-    );
-    await expect(approveUser("u1")).rejects.toThrow("User not found");
-  });
-});
-
-describe("rejectUser", () => {
-  it("PATCHes /superadmin/users/{id}/reject and returns rejected user", async () => {
-    const mockUser = {
-      id: "u1",
-      email: "alice@acme.com",
-      display_name: "Alice",
-      role: "admin",
-      approval_status: "rejected",
-      company_id: "c1",
-      company_name: "Acme Corp",
-      department_id: null,
-      created_at: "2026-08-24T00:00:00Z",
-    };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await rejectUser("u1");
-
-    expect(result.approvalStatus).toBe("rejected");
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/superadmin/users/u1/reject");
-    expect(options.method).toBe("PATCH");
-  });
-});
-
-describe("deleteSuperadminUser", () => {
-  it("DELETEs /superadmin/users/{id}", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await deleteSuperadminUser("u1");
-
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/superadmin/users/u1");
-    expect(options.method).toBe("DELETE");
-  });
-});
-
-describe("listCompanies", () => {
-  it("GETs /superadmin/companies and maps companies", async () => {
-    const mockData = [
-      {
-        id: "c1",
-        name: "Acme Corp",
-        status: "active",
-        created_at: "2026-08-24T00:00:00Z",
-        updated_at: "2026-08-24T00:00:00Z",
-      },
-    ];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const companies = await listCompanies();
-
-    expect(companies).toEqual([
-      {
-        id: "c1",
-        name: "Acme Corp",
-        status: "active",
-        createdAt: "2026-08-24T00:00:00Z",
-        updatedAt: "2026-08-24T00:00:00Z",
-      },
-    ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/superadmin/companies");
-  });
-});
-
-describe("suspendCompany and activateCompany", () => {
-  it("PATCHes /superadmin/companies/{id}/suspend", async () => {
-    const mockCompany = {
-      id: "c1",
-      name: "Acme Corp",
-      status: "suspended",
-      created_at: "2026-08-24T00:00:00Z",
-      updated_at: "2026-08-24T01:00:00Z",
-    };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockCompany), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await suspendCompany("c1");
-
-    expect(result.status).toBe("suspended");
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/superadmin/companies/c1/suspend");
-    expect(options.method).toBe("PATCH");
-  });
-
-  it("PATCHes /superadmin/companies/{id}/activate", async () => {
-    const mockCompany = {
-      id: "c1",
-      name: "Acme Corp",
-      status: "active",
-      created_at: "2026-08-24T00:00:00Z",
-      updated_at: "2026-08-24T01:00:00Z",
-    };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockCompany), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await activateCompany("c1");
-
-    expect(result.status).toBe("active");
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/superadmin/companies/c1/activate");
-    expect(options.method).toBe("PATCH");
-  });
-});
-
-describe("listTeamUsers", () => {
-  it("GETs /users and maps team members", async () => {
-    const mockData = [
-      {
-        id: "u1",
-        email: "bob@acme.com",
-        display_name: "Bob Dev",
-        role: "member",
+        email: "jane@acme.com",
+        display_name: "Jane",
+        is_instance_admin: false,
         approval_status: "approved",
-        company_id: "c1",
-        department_id: "d1",
-        department_name: "Engineering",
-        created_at: "2026-08-24T00:00:00Z",
-      },
-    ];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+        companies: [
+          { id: "c1", name: "Acme", slug: "acme", status: "active", role: "owner", department_id: null, department_name: null },
+        ],
+      }),
+    );
+    expect(await getMe()).toEqual({
+      id: "u1",
+      email: "jane@acme.com",
+      displayName: "Jane",
+      isInstanceAdmin: false,
+      approvalStatus: "approved",
+      companies: [{ id: "c1", name: "Acme", slug: "acme", status: "active", role: "owner", departmentId: null, departmentName: null }],
+    });
+  });
+});
 
-    const users = await listTeamUsers();
+describe("roleAtLeast", () => {
+  it("ranks owner > admin > member", () => {
+    expect(roleAtLeast("owner", "admin")).toBe(true);
+    expect(roleAtLeast("admin", "admin")).toBe(true);
+    expect(roleAtLeast("member", "admin")).toBe(false);
+    expect(roleAtLeast("admin", "owner")).toBe(false);
+    expect(roleAtLeast(undefined, "member")).toBe(false);
+  });
+});
 
-    expect(users).toEqual([
-      {
-        id: "u1",
-        email: "bob@acme.com",
-        displayName: "Bob Dev",
-        role: "member",
-        approvalStatus: "approved",
-        companyId: "c1",
-        departmentId: "d1",
-        departmentName: "Engineering",
-        createdAt: "2026-08-24T00:00:00Z",
-      },
+describe("companies", () => {
+  it("creates a company at account level", async () => {
+    const fetchMock = stubFetch(json({ id: "c2", name: "New Co", slug: "new-co", status: "active", role: "owner" }, 201));
+    const company = await createCompany("New Co");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8000/companies");
+    expect(company.slug).toBe("new-co");
+    expect(company.role).toBe("owner");
+  });
+});
+
+describe("members", () => {
+  const raw = {
+    user_id: "u2",
+    email: "bob@acme.com",
+    display_name: "Bob",
+    role: "member",
+    department_id: null,
+    department_name: null,
+    joined_at: "2026-11-01T00:00:00Z",
+  };
+
+  it("lists members", async () => {
+    stubFetch(json([raw]));
+    expect(await listMembers("acme")).toEqual([
+      { userId: "u2", email: "bob@acme.com", displayName: "Bob", role: "member", departmentId: null, departmentName: null, joinedAt: "2026-11-01T00:00:00Z" },
     ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/users");
+  });
+
+  it("sends only the fields that change, and null to clear a department", async () => {
+    const fetchMock = stubFetch(json(raw), json(raw));
+    await updateMember("acme", "u2", { role: "admin" });
+    await updateMember("acme", "u2", { departmentId: null });
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/members/u2");
+    expect(fetchMock.mock.calls[0][1].method).toBe("PATCH");
+    expect(sentJson(fetchMock, 0)).toEqual({ role: "admin" });
+    expect(sentJson(fetchMock, 1)).toEqual({ department_id: null });
+  });
+
+  it("removes a member (or leaves) with DELETE", async () => {
+    const fetchMock = stubFetch(new Response(null, { status: 204 }));
+    await removeMember("acme", "u2");
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/members/u2");
+    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+  });
+
+  it("surfaces the owner-must-transfer refusal", async () => {
+    stubFetch(json({ detail: "Transfer ownership before leaving the company" }, 409));
+    await expect(removeMember("acme", "me")).rejects.toThrow("Transfer ownership before leaving the company");
+  });
+
+  it("transfers ownership", async () => {
+    const fetchMock = stubFetch(json({ ...raw, role: "owner" }));
+    expect((await transferOwnership("acme", "u2")).role).toBe("owner");
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/transfer-ownership");
+    expect(sentJson(fetchMock)).toEqual({ user_id: "u2" });
   });
 });
 
-describe("createUser", () => {
-  it("POSTs to /users with correct body and returns created member", async () => {
-    const mockUser = {
-      id: "u2",
-      email: "charlie@acme.com",
-      display_name: "Charlie",
-      role: "member",
+describe("invites", () => {
+  it("creates an invite and returns its one-time token", async () => {
+    const fetchMock = stubFetch(
+      json(
+        {
+          id: "i1",
+          email: "new@acme.com",
+          role: "member",
+          department_id: "d1",
+          expires_at: "2026-11-24T00:00:00Z",
+          created_at: "2026-11-17T00:00:00Z",
+          token: "secret",
+        },
+        201,
+      ),
+    );
+    const invite = await createInvite("acme", { email: "new@acme.com", role: "member", departmentId: "d1" });
+    expect(fetchMock.mock.calls[0][0]).toContain("/companies/acme/invites");
+    expect(sentJson(fetchMock)).toEqual({ email: "new@acme.com", role: "member", department_id: "d1" });
+    expect(invite.token).toBe("secret");
+    expect(invite.departmentId).toBe("d1");
+  });
+
+  it("previews and accepts an invite at account level", async () => {
+    const fetchMock = stubFetch(
+      json({ company_name: "Acme", email: "new@acme.com", role: "admin" }),
+      json({ company_slug: "acme" }),
+    );
+    expect(await getInvitePreview("tok")).toEqual({ companyName: "Acme", email: "new@acme.com", role: "admin" });
+    expect(await acceptInvite("tok")).toEqual({ companySlug: "acme" });
+    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8000/invites/tok");
+    expect(fetchMock.mock.calls[1][0]).toBe("http://localhost:8000/invites/tok/accept");
+    expect(fetchMock.mock.calls[1][1].method).toBe("POST");
+  });
+
+  it("shows why an invite can't be used", async () => {
+    stubFetch(json({ detail: "This invite was sent to a different email address" }, 403));
+    await expect(acceptInvite("tok")).rejects.toThrow("different email address");
+  });
+});
+
+describe("instance administration", () => {
+  it("lists users, optionally pending only", async () => {
+    const fetchMock = stubFetch(json([]), json([]));
+    await listInstanceUsers();
+    await listInstanceUsers("pending");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8000/instance/users");
+    expect(fetchMock.mock.calls[1][0]).toBe("http://localhost:8000/instance/users?approval_status=pending");
+  });
+
+  it("approves and deletes users", async () => {
+    const user = {
+      id: "u1",
+      email: "a@b.co",
+      display_name: null,
+      is_instance_admin: false,
       approval_status: "approved",
-      company_id: "c1",
-      department_id: "d1",
-      department_name: "Engineering",
-      created_at: "2026-08-24T00:00:00Z",
+      companies: [{ name: "Acme", slug: "acme", role: "member" }],
+      created_at: "2026-11-01T00:00:00Z",
     };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 201 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await createUser({
-      email: "charlie@acme.com",
-      password: "password123",
-      displayName: "Charlie",
-      departmentId: "d1",
-    });
-
-    expect(result.email).toBe("charlie@acme.com");
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/users");
-    expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body)).toEqual({
-      email: "charlie@acme.com",
-      password: "password123",
-      display_name: "Charlie",
-      department_id: "d1",
-      role: "member",
-    });
+    const fetchMock = stubFetch(json(user), new Response(null, { status: 204 }));
+    expect((await approveUser("u1")).approvalStatus).toBe("approved");
+    await deleteInstanceUser("u1");
+    expect(fetchMock.mock.calls[0][0]).toContain("/instance/users/u1/approve");
+    expect(fetchMock.mock.calls[1][0]).toContain("/instance/users/u1");
+    expect(fetchMock.mock.calls[1][1].method).toBe("DELETE");
   });
-});
 
-describe("updateUser", () => {
-  it("PATCHes /users/{id} with payload", async () => {
-    const mockUser = {
-      id: "u2",
-      email: "charlie@acme.com",
-      display_name: "Charlie Senior",
-      role: "admin",
-      approval_status: "approved",
-      company_id: "c1",
-      department_id: "d2",
-      department_name: "Product",
-      created_at: "2026-08-24T00:00:00Z",
+  it("lists companies and changes their status", async () => {
+    const company = {
+      id: "c1",
+      name: "Acme",
+      slug: "acme",
+      status: "suspended",
+      member_count: 3,
+      created_at: "2026-11-01T00:00:00Z",
+      updated_at: "2026-11-01T00:00:00Z",
     };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockUser), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await updateUser("u2", {
-      displayName: "Charlie Senior",
-      departmentId: "d2",
-      role: "admin",
-    });
-
-    expect(result.displayName).toBe("Charlie Senior");
-    expect(result.role).toBe("admin");
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/users/u2");
-    expect(options.method).toBe("PATCH");
-  });
-});
-
-describe("deleteUser", () => {
-  it("DELETEs /users/{id}", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await deleteUser("u2");
-
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/users/u2");
-    expect(options.method).toBe("DELETE");
-  });
-});
-
-describe("listDepartments", () => {
-  it("GETs /departments and maps departments", async () => {
-    const mockData = [
-      {
-        id: "d1",
-        name: "Engineering",
-        company_id: "c1",
-        created_at: "2026-08-24T00:00:00Z",
-      },
-    ];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const depts = await listDepartments();
-
-    expect(depts).toEqual([
-      {
-        id: "d1",
-        name: "Engineering",
-        companyId: "c1",
-        createdAt: "2026-08-24T00:00:00Z",
-      },
-    ]);
-    expect(fetchMock.mock.calls[0][0]).toContain("/departments");
-  });
-});
-
-describe("createDepartment", () => {
-  it("POSTs to /departments with name", async () => {
-    const mockDept = {
-      id: "d2",
-      name: "Marketing",
-      company_id: "c1",
-      created_at: "2026-08-24T00:00:00Z",
-    };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(mockDept), { status: 201 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await createDepartment("Marketing");
-
-    expect(result).toEqual({
-      id: "d2",
-      name: "Marketing",
-      companyId: "c1",
-      createdAt: "2026-08-24T00:00:00Z",
-    });
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/departments");
-    expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body)).toEqual({ name: "Marketing" });
-  });
-});
-
-describe("deleteDepartment", () => {
-  it("DELETEs /departments/{id}", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await deleteDepartment("d1");
-
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain("/departments/d1");
-    expect(options.method).toBe("DELETE");
+    const fetchMock = stubFetch(json([company]), json(company), json({ ...company, status: "active" }));
+    expect((await listInstanceCompanies())[0].memberCount).toBe(3);
+    await setCompanyStatus("c1", "suspended");
+    expect((await setCompanyStatus("c1", "active")).status).toBe("active");
+    expect(fetchMock.mock.calls[1][0]).toContain("/instance/companies/c1/suspend");
+    expect(fetchMock.mock.calls[2][0]).toContain("/instance/companies/c1/activate");
   });
 });

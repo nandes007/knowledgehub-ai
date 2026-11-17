@@ -12,6 +12,10 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("./CompanyProvider", () => ({
+  useCompany: () => ({ slug: "acme", isAdmin: false, isOwner: false }),
+}));
+
 // Mock ConversationsProvider
 vi.mock("./ConversationsProvider", () => ({
   useConversations: () => ({

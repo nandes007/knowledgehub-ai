@@ -7,11 +7,12 @@ from app.main import app
 from app.models.company import Company
 from app.models.department import Department
 from app.models.document import Document
+from app.models.membership import Membership
 from app.models.user import User
 from app.services.auth import verify_password
 from app.services.llm import get_llm_provider
 from ingestion.index import VectorStore, get_vector_store
-from tests.conftest import _registered_client
+from tests.conftest import _add_member, _registered_client, _user_id_from, account, client_for
 
 
 class _FakeLLM:
@@ -32,255 +33,186 @@ def _clear_overrides() -> None:
     app.dependency_overrides.pop(get_vector_store, None)
 
 
-def test_register_creates_company_and_pending_admin_and_returns_message(anon_client, db_engine):
-    response = anon_client.post(
+def _register(anon_client, email: str = "new@example.com", **extra):
+    return anon_client.post(
         "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "admin@acme.com",
-            "password": "password123",
-            "display_name": "Acme Admin",
-        },
+        json={"email": email, "password": "password123", "display_name": "New User", **extra},
     )
+
+
+def _login(anon_client, email: str = "new@example.com", password: str = "password123"):
+    return anon_client.post("/auth/login", json={"email": email, "password": password})
+
+
+# --- Signup modes ----------------------------------------------------------------------------
+
+
+def test_open_signup_creates_only_an_account_that_can_log_in_at_once(anon_client, db_engine):
+    response = _register(anon_client)
 
     assert response.status_code == 201
-    body = response.json()
-    assert body == {"message": "Registration pending approval"}
-    assert "access_token" not in body
-
+    assert response.json() == {"message": "Account created", "approval_status": "approved", "company_slug": None}
     with Session(db_engine) as session:
-        company = session.exec(select(Company).where(Company.name == "Acme Corp")).first()
-        assert company is not None
-        assert company.status == "active"
-
-        user = session.exec(select(User).where(User.email == "admin@acme.com")).first()
-        assert user is not None
-        assert user.company_id == company.id
-        assert user.role == "admin"
-        assert user.approval_status == "pending"
-        assert user.display_name == "Acme Admin"
-        assert user.password_hash != "password123"
+        user = session.exec(select(User).where(User.email == "new@example.com")).one()
+        assert user.display_name == "New User"
+        assert user.is_instance_admin is False
         assert verify_password("password123", user.password_hash)
+        assert session.exec(select(Company)).all() == []
+        assert session.exec(select(Membership)).all() == []
+
+    token = _login(anon_client).json()["access_token"]
+    me = anon_client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
+    assert me["email"] == "new@example.com"
+    assert me["companies"] == []
 
 
-def test_register_rejects_duplicate_company_name(anon_client):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "admin1@acme.com",
-            "password": "password123",
-        },
-    )
+def test_approval_signup_waits_for_an_instance_admin(anon_client, instance_admin_client, monkeypatch):
+    monkeypatch.setattr(settings, "signup_mode", "approval")
 
-    response = anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "admin2@acme.com",
-            "password": "password123",
-        },
-    )
+    response = _register(anon_client)
+    assert response.status_code == 201
+    assert response.json()["approval_status"] == "pending"
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Company name already taken"
+    pending = _login(anon_client)
+    assert pending.status_code == 403
+    assert pending.json()["detail"] == "Your account is pending approval"
+
+    user_id = instance_admin_client.get("/instance/users", params={"approval_status": "pending"}).json()[0]["id"]
+    assert instance_admin_client.patch(f"/instance/users/{user_id}/approve").status_code == 200
+    assert _login(anon_client).status_code == 200
+
+    assert instance_admin_client.patch(f"/instance/users/{user_id}/reject").status_code == 200
+    rejected = _login(anon_client)
+    assert rejected.status_code == 403
+    assert rejected.json()["detail"] == "Your registration has been rejected"
+
+
+def test_a_token_stops_working_once_the_account_is_rejected(client, db_engine, test_user_id):
+    with Session(db_engine) as session:
+        user = session.get(User, test_user_id)
+        user.approval_status = "rejected"
+        session.add(user)
+        session.commit()
+
+    assert account(client).get("/auth/me").status_code == 403
+
+
+def test_closed_signup_refuses_registration_without_an_invite(anon_client, db_engine, monkeypatch):
+    monkeypatch.setattr(settings, "signup_mode", "closed")
+
+    response = _register(anon_client)
+
+    assert response.status_code == 403
+    assert "invite" in response.json()["detail"]
+    with Session(db_engine) as session:
+        assert session.exec(select(User)).all() == []
 
 
 def test_register_rejects_duplicate_email(anon_client):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "admin@example.com",
-            "password": "password123",
-        },
-    )
+    _register(anon_client)
 
-    response = anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Beta Corp",
-            "email": "admin@example.com",
-            "password": "password123",
-        },
-    )
+    response = _register(anon_client)
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Email already registered"
 
 
-def test_login_rejects_pending_user(anon_client):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "pending@example.com",
-            "password": "password123",
-        },
-    )
+def test_email_matching_ignores_case(anon_client):
+    # Invites bind to a lowercased email, so one person must not get two accounts by casing.
+    _register(anon_client, email="Bob@Example.com")
 
-    response = anon_client.post(
-        "/auth/login",
-        json={"email": "pending@example.com", "password": "password123"},
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Your account is pending approval"
+    assert _register(anon_client, email="bob@example.com").status_code == 409
+    assert _login(anon_client, email="BOB@example.com").status_code == 200
 
 
-def test_login_rejects_rejected_user(anon_client, db_engine):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "rejected@example.com",
-            "password": "password123",
-        },
-    )
-
-    with Session(db_engine) as session:
-        user = session.exec(select(User).where(User.email == "rejected@example.com")).one()
-        user.approval_status = "rejected"
-        session.add(user)
-        session.commit()
-
-    response = anon_client.post(
-        "/auth/login",
-        json={"email": "rejected@example.com", "password": "password123"},
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Your registration has been rejected"
+def test_register_rejects_a_short_password(anon_client):
+    response = anon_client.post("/auth/register", json={"email": "a@example.com", "password": "short"})
+    assert response.status_code == 422
 
 
-def test_login_rejects_user_in_suspended_company(anon_client, db_engine):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "suspended@example.com",
-            "password": "password123",
-        },
-    )
-
-    with Session(db_engine) as session:
-        user = session.exec(select(User).where(User.email == "suspended@example.com")).one()
-        user.approval_status = "approved"
-        session.add(user)
-        company = session.get(Company, user.company_id)
-        company.status = "suspended"
-        session.add(company)
-        session.commit()
-
-    response = anon_client.post(
-        "/auth/login",
-        json={"email": "suspended@example.com", "password": "password123"},
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Your company has been suspended"
+# --- Login -----------------------------------------------------------------------------------
 
 
-def test_login_returns_token_for_approved_user_in_active_company(anon_client, db_engine):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "approved@example.com",
-            "password": "password123",
-        },
-    )
+def test_login_rejects_wrong_password(anon_client):
+    _register(anon_client)
 
-    with Session(db_engine) as session:
-        user = session.exec(select(User).where(User.email == "approved@example.com")).one()
-        user.approval_status = "approved"
-        session.add(user)
-        session.commit()
-
-    response = anon_client.post(
-        "/auth/login",
-        json={"email": "approved@example.com", "password": "password123"},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["access_token"]
-    assert response.json()["token_type"] == "bearer"
-
-
-def test_login_rejects_wrong_password(anon_client, db_engine):
-    anon_client.post(
-        "/auth/register",
-        json={
-            "company_name": "Acme Corp",
-            "email": "user@example.com",
-            "password": "password123",
-        },
-    )
-
-    with Session(db_engine) as session:
-        user = session.exec(select(User).where(User.email == "user@example.com")).one()
-        user.approval_status = "approved"
-        session.add(user)
-        session.commit()
-
-    response = anon_client.post(
-        "/auth/login",
-        json={"email": "user@example.com", "password": "wrong-password"},
-    )
+    response = _login(anon_client, password="wrong-password")
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid email or password"
 
 
 def test_login_rejects_unknown_email(anon_client):
-    response = anon_client.post(
-        "/auth/login",
-        json={"email": "nobody@example.com", "password": "password123"},
-    )
+    response = _login(anon_client, email="nobody@example.com")
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid email or password"
 
 
-def test_me_returns_tenant_and_approval_details(client, db_engine, test_user_id):
+def test_login_still_works_when_one_of_the_users_companies_is_suspended(client, db_engine):
+    """Suspension blocks the company, not the account."""
+    _add_member(db_engine, "test-user@example.com", company_name="Second Company", role="owner")
     with Session(db_engine) as session:
-        user = session.get(User, test_user_id)
-        company = session.get(Company, user.company_id)
-        company_id = company.id
-        dept = Department(company_id=company.id, name="Engineering")
+        company = session.exec(select(Company).where(Company.name == "Test Company")).one()
+        company.status = "suspended"
+        session.add(company)
+        session.commit()
+
+    suspended = client.get("/documents")
+    assert suspended.status_code == 403
+    assert suspended.json()["detail"] == "This company has been suspended"
+
+    me = account(client).get("/auth/me")
+    assert me.status_code == 200
+    assert client_for(_user_id_from(client), "second-company").get("/documents").status_code == 200
+
+
+# --- /auth/me --------------------------------------------------------------------------------
+
+
+def test_me_lists_every_company_with_the_role_and_department_held_there(client, db_engine, test_user_id):
+    with Session(db_engine) as session:
+        company = session.exec(select(Company).where(Company.name == "Test Company")).one()
+        dept = Department(name="Engineering", company_id=company.id)
         session.add(dept)
         session.commit()
-        session.refresh(dept)
-        dept_id = dept.id
-
-        user.department_id = dept.id
-        user.display_name = "Test User"
-        session.add(user)
+        membership = session.exec(select(Membership).where(Membership.user_id == test_user_id)).one()
+        membership.department_id = dept.id
+        session.add(membership)
         session.commit()
-        session.refresh(user)
+        dept_id, company_id = str(dept.id), str(company.id)
+    _add_member(db_engine, "test-user@example.com", company_name="Another Co", role="owner")
 
-    response = client.get("/auth/me")
+    response = account(client).get("/auth/me")
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["email"] == "test-user@example.com"
-    assert data["display_name"] == "Test User"
-    assert data["role"] == "member"
-    assert data["approval_status"] == "approved"
-    assert data["company_name"] == "Test Company"
-    assert str(data["company_id"]) == str(company_id)
-    assert data["department_name"] == "Engineering"
-    assert str(data["department_id"]) == str(dept_id)
+    body = response.json()
+    assert body["email"] == "test-user@example.com"
+    assert body["is_instance_admin"] is False
+    assert body["approval_status"] == "approved"
+    assert body["companies"] == [
+        {
+            "id": body["companies"][0]["id"],
+            "name": "Another Co",
+            "slug": "another-co",
+            "status": "active",
+            "role": "owner",
+            "department_id": None,
+            "department_name": None,
+        },
+        {
+            "id": company_id,
+            "name": "Test Company",
+            "slug": "test-company",
+            "status": "active",
+            "role": "member",
+            "department_id": dept_id,
+            "department_name": "Engineering",
+        },
+    ]
 
 
-def test_me_reflects_an_admin_role(client, db_engine, test_user_id):
-    with Session(db_engine) as session:
-        user = session.get(User, test_user_id)
-        user.role = "admin"
-        session.add(user)
-        session.commit()
-
-    assert client.get("/auth/me").json()["role"] == "admin"
+# --- Authentication is required everywhere ---------------------------------------------------
 
 
 def test_me_without_a_token_returns_401(anon_client):
@@ -290,19 +222,19 @@ def test_me_without_a_token_returns_401(anon_client):
 
 
 def test_protected_route_without_a_token_returns_401(anon_client):
-    response = anon_client.get("/conversations")
+    response = anon_client.get("/companies/test-company/conversations")
 
     assert response.status_code == 401
 
 
 def test_chat_without_a_token_returns_401(anon_client):
-    response = anon_client.post("/chat", data={"message": "hi"})
+    response = anon_client.post("/companies/test-company/chat", data={"message": "hi"})
 
     assert response.status_code == 401
 
 
 def test_documents_without_a_token_returns_401(anon_client):
-    response = anon_client.get("/documents")
+    response = anon_client.get("/companies/test-company/documents")
 
     assert response.status_code == 401
 
@@ -310,7 +242,7 @@ def test_documents_without_a_token_returns_401(anon_client):
 def test_protected_route_with_a_garbage_token_returns_401(anon_client):
     anon_client.headers["Authorization"] = "Bearer not-a-real-token"
 
-    response = anon_client.get("/conversations")
+    response = anon_client.get("/companies/test-company/conversations")
 
     assert response.status_code == 401
 

@@ -3,11 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
-import { ConversationsProvider } from "@/components/ConversationsProvider";
-import { Sidebar } from "@/components/Sidebar";
 
+// Signed-in area. Company pages add their own chrome in [slug]/layout.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { token, isReady } = useAuth();
+  const { token, user, isReady } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -16,13 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Avoid flashing protected content before the redirect above kicks in.
   if (!isReady || !token) return null;
+  if (!user) return <div className="flex flex-1 items-center justify-center text-sm text-text-tertiary">Loading…</div>;
 
-  return (
-    <ConversationsProvider>
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        {children}
-      </div>
-    </ConversationsProvider>
-  );
+  return <>{children}</>;
 }

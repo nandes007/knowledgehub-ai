@@ -1,18 +1,16 @@
 import json
 import uuid
+from datetime import timedelta
 
-from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from app.config import settings
 from app.main import app
-from app.models.company import Company
 from app.models.message import Message
-from app.models.user import User
-from app.services.auth import create_access_token, hash_password
 from app.services.llm import TokenUsage, get_llm_provider, message_text
 from ingestion.chunk import chunk_markdown
 from ingestion.index import VectorStore, get_vector_store
-from tests.conftest import _override_db
+from tests.conftest import _registered_client, _user_id_from, company_id_of
 
 _VOCAB = ["vacation", "pto", "policy", "days", "onboarding", "laptop", "sick", "secret", "alpha", "beta"]
 _ANSWER_TOKENS = ["Employees ", "get ", "20 ", "days ", "of ", "PTO ", "per ", "year."]
@@ -58,12 +56,7 @@ def _bag_of_words(text: str) -> list[float]:
 
 def _seeded_store(tmp_path, user_id, db_engine=None) -> VectorStore:
     store = VectorStore(persist_dir=str(tmp_path))
-    company_id = "comp-1"
-    if db_engine is not None:
-        with Session(db_engine) as session:
-            user = session.get(User, user_id)
-            if user and user.company_id:
-                company_id = str(user.company_id)
+    company_id = str(company_id_of(db_engine)) if db_engine is not None else "comp-1"
 
     chunks = chunk_markdown("# Vacation Policy\n\nEmployees get 20 days of PTO per year.")
     embeddings = [_bag_of_words(c.text) for c in chunks]
@@ -178,42 +171,17 @@ def test_chat_includes_history_and_dynamic_company_prompt(client, tmp_path, test
 
 
 def test_cross_company_chat_never_surfaces_other_company_documents(db_engine, tmp_path):
-    _override_db(db_engine)
-    with Session(db_engine, expire_on_commit=False) as session:
-        comp_a = Company(name="Acme Alpha", status="active")
-        comp_b = Company(name="Beta Corp", status="active")
-        session.add_all([comp_a, comp_b])
-        session.commit()
-
-        user_a = User(
-            email="user@alpha.com",
-            password_hash=hash_password("pw"),
-            role="member",
-            approval_status="approved",
-            company_id=comp_a.id,
-        )
-        user_b = User(
-            email="user@beta.com",
-            password_hash=hash_password("pw"),
-            role="member",
-            approval_status="approved",
-            company_id=comp_b.id,
-        )
-        session.add_all([user_a, user_b])
-        session.commit()
-        u_a_id, u_b_id = user_a.id, user_b.id
-
-    client_a = TestClient(app)
-    client_a.headers["Authorization"] = f"Bearer {create_access_token(u_a_id)}"
-    client_b = TestClient(app)
-    client_b.headers["Authorization"] = f"Bearer {create_access_token(u_b_id)}"
+    client_a = _registered_client(db_engine, "user@alpha.com", company_name="Acme Alpha")
+    client_b = _registered_client(db_engine, "user@beta.com", company_name="Beta Corp")
+    u_a_id, u_b_id = _user_id_from(client_a), _user_id_from(client_b)
+    comp_a_id, comp_b_id = company_id_of(db_engine, "Acme Alpha"), company_id_of(db_engine, "Beta Corp")
 
     store = VectorStore(persist_dir=str(tmp_path))
     chunks_a = chunk_markdown("# Secret Alpha\n\nAlpha secret policy content")
     chunks_b = chunk_markdown("# Secret Beta\n\nBeta secret policy content")
     store.upsert_chunks(
         document_id="doc-a",
-        company_id=str(comp_a.id),
+        company_id=str(comp_a_id),
         user_id=str(u_a_id),
         filename="alpha_secret.md",
         chunks=chunks_a,
@@ -221,7 +189,7 @@ def test_cross_company_chat_never_surfaces_other_company_documents(db_engine, tm
     )
     store.upsert_chunks(
         document_id="doc-b",
-        company_id=str(comp_b.id),
+        company_id=str(comp_b_id),
         user_id=str(u_b_id),
         filename="beta_secret.md",
         chunks=chunks_b,
@@ -317,3 +285,92 @@ def test_chat_sets_conversation_title_from_first_message(client, tmp_path, test_
     assert conv_response.status_code == 200
     conv = next(c for c in conv_response.json() if c["id"] == conversation_id)
     assert conv["title"] == "What is our travel policy?"
+
+
+class _RecordingStore:
+    def __init__(self) -> None:
+        self.filters: list[dict] = []
+
+    def query(self, embedding, *, top_k, where):
+        self.filters.append(where)
+        return []
+
+    keyword_query = query
+
+
+def _retrieval_filter(client) -> dict:
+    store = _RecordingStore()
+    _override(_FakeLLM())
+    app.dependency_overrides[get_vector_store] = lambda: store
+    try:
+        assert client.post("/chat", data={"message": "What is the policy?"}).status_code == 200
+    finally:
+        _clear_overrides()
+    return store.filters[0]
+
+
+def test_retrieval_is_filtered_to_the_current_company_and_the_members_visibility(db_engine):
+    admin = _registered_client(db_engine, "admin@example.com", role="admin")
+    dept_id = admin.post("/departments", json={"name": "Engineering"}).json()["id"]
+    owner = _registered_client(db_engine, "owner@example.com", role="owner")
+    engineer = _registered_client(db_engine, "eng@example.com", department_id=uuid.UUID(dept_id))
+    unassigned = _registered_client(db_engine, "solo@example.com")
+    company = {"company_id": str(company_id_of(db_engine))}
+
+    # Owners and admins: the whole company, and nothing but the company.
+    assert _retrieval_filter(owner) == company
+    assert _retrieval_filter(admin) == company
+    # Members: the company AND (company-wide OR their own department).
+    assert _retrieval_filter(unassigned) == {"$and": [company, {"visibility": "company"}]}
+    engineer_filter = _retrieval_filter(engineer)
+    assert engineer_filter["$and"][0] == company
+    assert {"visibility": "company"} in engineer_filter["$and"][1]["$or"]
+    assert dept_id in json.dumps(engineer_filter)
+
+
+def test_the_same_user_gets_each_companys_filter_and_conversations(db_engine):
+    here = _registered_client(db_engine, "both@example.com", company_name="Here", role="admin")
+    there = _registered_client(db_engine, "both@example.com", company_name="There", role="member")
+
+    assert _retrieval_filter(here) == {"company_id": str(company_id_of(db_engine, "Here"))}
+    assert _retrieval_filter(there)["$and"][0] == {"company_id": str(company_id_of(db_engine, "There"))}
+
+    # One chat each, and neither company shows the other's.
+    here_ids = [c["id"] for c in here.get("/conversations").json()]
+    there_ids = [c["id"] for c in there.get("/conversations").json()]
+    assert len(here_ids) == len(there_ids) == 1 and here_ids != there_ids
+    assert there.get(f"/conversations/{here_ids[0]}/messages").status_code == 404
+
+
+def test_daily_message_cap_per_company(client, other_client, other_company_client, db_engine, monkeypatch):
+    monkeypatch.setattr(settings, "max_messages_per_company_per_day", 2)
+    store = _RecordingStore()
+    _override(_FakeLLM())
+    app.dependency_overrides[get_vector_store] = lambda: store
+
+    def ask(c):
+        return c.post("/chat", data={"message": "What is the policy?"})
+
+    try:
+        first, second = ask(client), ask(other_client)  # two members of one company share its allowance
+        over = ask(client)
+        elsewhere = ask(other_company_client)
+
+        # Yesterday's messages no longer count.
+        with Session(db_engine) as session:
+            for message in session.exec(select(Message)):
+                message.created_at -= timedelta(days=1, minutes=1)
+                session.add(message)
+            session.commit()
+        next_day = ask(client)
+
+        monkeypatch.setattr(settings, "max_messages_per_company_per_day", 0)  # 0 = unlimited
+        unlimited = [ask(client) for _ in range(3)]
+    finally:
+        _clear_overrides()
+
+    assert [r.status_code for r in (first, second, over)] == [200, 200, 403]
+    assert "Daily message limit reached" in over.json()["detail"]
+    assert elsewhere.status_code == 200
+    assert next_day.status_code == 200
+    assert [r.status_code for r in unlimited] == [200, 200, 200]

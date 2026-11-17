@@ -6,16 +6,17 @@ from sqlmodel import Session, select
 from app.main import app
 from app.models.company import Company
 from app.models.department import Department
+from app.models.membership import Membership
 from app.models.user import User
-from app.services.auth import create_access_token, hash_password
-from tests.conftest import _override_db
+from app.services.auth import hash_password
+from tests.conftest import _override_db, client_for
 
 
 def _setup_company_and_users(db_engine):
     _override_db(db_engine)
     with Session(db_engine, expire_on_commit=False) as session:
-        company_a = Company(name="Acme Corp", status="active")
-        company_b = Company(name="Beta Inc", status="active")
+        company_a = Company(name="Acme Corp", slug="acme-corp", status="active")
+        company_b = Company(name="Beta Inc", slug="beta-inc", status="active")
         session.add(company_a)
         session.add(company_b)
         session.commit()
@@ -26,38 +27,19 @@ def _setup_company_and_users(db_engine):
         session.add(dept_b)
         session.commit()
 
-        admin_a = User(
-            email="admin_a@acme.com",
-            password_hash=hash_password("pw123456"),
-            role="admin",
-            approval_status="approved",
-            company_id=company_a.id,
-            department_id=dept_a.id,
+        users = {
+            name: User(email=f"{name}@example.com", password_hash=hash_password("pw123456"))
+            for name in ("admin_a", "admin_b", "member_a")
+        }
+        session.add_all(users.values())
+        session.commit()
+        session.add_all(
+            [
+                Membership(user_id=users["admin_a"].id, company_id=company_a.id, role="admin", department_id=dept_a.id),
+                Membership(user_id=users["admin_b"].id, company_id=company_b.id, role="admin", department_id=dept_b.id),
+                Membership(user_id=users["member_a"].id, company_id=company_a.id, role="member", department_id=dept_a.id),
+            ]
         )
-        admin_b = User(
-            email="admin_b@beta.com",
-            password_hash=hash_password("pw123456"),
-            role="admin",
-            approval_status="approved",
-            company_id=company_b.id,
-            department_id=dept_b.id,
-        )
-        member_a = User(
-            email="member_a@acme.com",
-            password_hash=hash_password("pw123456"),
-            role="member",
-            approval_status="approved",
-            company_id=company_a.id,
-            department_id=dept_a.id,
-        )
-        superadmin = User(
-            email="superadmin@platform.com",
-            password_hash=hash_password("pw123456"),
-            role="superadmin",
-            approval_status="approved",
-            company_id=None,
-        )
-        session.add_all([admin_a, admin_b, member_a, superadmin])
         session.commit()
 
         return {
@@ -65,17 +47,18 @@ def _setup_company_and_users(db_engine):
             "company_b": company_b,
             "dept_a": dept_a,
             "dept_b": dept_b,
-            "admin_a": admin_a,
-            "admin_b": admin_b,
-            "member_a": member_a,
-            "superadmin": superadmin,
+            **users,
         }
+
+
+def _client(entities, name: str) -> TestClient:
+    """Signed in as that user, scoped to their own company."""
+    return client_for(entities[name].id, "acme-corp" if name.endswith("_a") else "beta-inc")
 
 
 def test_create_department_success(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_a'].id)}"
+    client = _client(entities, "admin_a")
 
     response = client.post("/departments", json={"name": "Marketing"})
     assert response.status_code == 201
@@ -94,8 +77,7 @@ def test_create_department_success(db_engine):
 
 def test_create_department_duplicate_name_conflict(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_a'].id)}"
+    client = _client(entities, "admin_a")
 
     # Already has "Engineering"
     response = client.post("/departments", json={"name": "Engineering"})
@@ -105,8 +87,7 @@ def test_create_department_duplicate_name_conflict(db_engine):
 
 def test_create_department_same_name_different_company_allowed(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_b'].id)}"
+    client = _client(entities, "admin_b")
 
     # Company B creating "Engineering" should succeed even though Company A has "Engineering"
     response = client.post("/departments", json={"name": "Engineering"})
@@ -116,8 +97,7 @@ def test_create_department_same_name_different_company_allowed(db_engine):
 
 def test_list_departments_scoped_to_company(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_a'].id)}"
+    client = _client(entities, "admin_a")
 
     response = client.get("/departments")
     assert response.status_code == 200
@@ -129,8 +109,7 @@ def test_list_departments_scoped_to_company(db_engine):
 
 def test_delete_department_success(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_a'].id)}"
+    client = _client(entities, "admin_a")
 
     dept_id = entities["dept_a"].id
     response = client.delete(f"/departments/{dept_id}")
@@ -143,8 +122,7 @@ def test_delete_department_success(db_engine):
 
 def test_delete_department_not_found(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_a'].id)}"
+    client = _client(entities, "admin_a")
 
     random_id = uuid.uuid4()
     response = client.delete(f"/departments/{random_id}")
@@ -154,9 +132,7 @@ def test_delete_department_not_found(db_engine):
 
 def test_delete_department_cross_company_isolation(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    # Admin A attempts to delete Department B
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['admin_a'].id)}"
+    client = _client(entities, "admin_a")
 
     dept_b_id = entities["dept_b"].id
     response = client.delete(f"/departments/{dept_b_id}")
@@ -171,8 +147,7 @@ def test_delete_department_cross_company_isolation(db_engine):
 
 def test_departments_non_admin_forbidden(db_engine):
     entities = _setup_company_and_users(db_engine)
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {create_access_token(entities['member_a'].id)}"
+    client = _client(entities, "member_a")
 
     assert client.post("/departments", json={"name": "Ops"}).status_code == 403
     assert client.get("/departments").status_code == 403
@@ -180,8 +155,8 @@ def test_departments_non_admin_forbidden(db_engine):
 
 
 def test_departments_unauthenticated_unauthorized(db_engine):
-    _override_db(db_engine)
-    client = TestClient(app)
+    _setup_company_and_users(db_engine)
+    client = TestClient(app, base_url="http://testserver/companies/acme-corp")
 
     assert client.post("/departments", json={"name": "Ops"}).status_code == 401
     assert client.get("/departments").status_code == 401

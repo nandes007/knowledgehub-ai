@@ -30,7 +30,7 @@ The project addresses a common problem: important knowledge is often scattered a
 - Shows the source documents used for each answer.
 - Saves conversations so users can return to previous work.
 - Separates data by company and supports company-wide or department-only documents.
-- Provides member, company admin, and platform superadmin roles.
+- One account can join several companies, each with its own owner, admin, or member role; people join by copyable invite links.
 - Gives admins usage, document, and estimated LLM cost statistics.
 - Includes rate limiting, strict CORS, security headers, structured logs, and database migrations.
 
@@ -69,15 +69,18 @@ PostgreSQL stores accounts, companies, departments, document metadata, conversat
 
 ## Access model
 
-KnowledgeHub AI is multi-tenant. Data and retrieval are scoped to a company.
+KnowledgeHub AI is multi-tenant. Accounts are global; a person signs up once and can belong to several companies, with a separate role and department in each. The active company is named by its slug in the URL (`/acme/knowledge`), so two companies can be open in two tabs. Data and retrieval are scoped to that company.
 
 | Role | Responsibilities |
 | --- | --- |
-| Member | Chat with permitted knowledge and view their conversations. |
-| Company admin | Manage documents, departments, team members, and company usage. |
-| Platform superadmin | Approve registrations and manage companies and company admins. |
+| Member | Chat with permitted knowledge and view their own conversations. Can leave the company. |
+| Admin | Manage documents and departments, invite members, and edit or remove members. |
+| Owner | Everything an admin does, plus promote/demote admins, transfer ownership, rename or delete the company. |
+| Instance admin | Platform only: approve accounts, suspend or delete companies, see instance usage. Cannot read any company's documents or chats without an ordinary membership. |
 
-Company documents are visible to everyone in that company. Department documents are available only to members of the matching department; company admins can manage all documents in their company.
+Company documents are visible to everyone in that company. Department documents are available only to members of the matching department; owners and admins see every document in their company.
+
+`SIGNUP_MODE` sets who may register: `open` (default, for a public demo), `approval` (an instance admin approves each account), or `closed` (invite links only). Optional per-company caps (`MAX_DOCUMENTS_PER_COMPANY`, `MAX_MESSAGES_PER_COMPANY_PER_DAY`, `MAX_COMPANIES_PER_USER`) protect a public instance and default to unlimited.
 
 ## Tech stack
 
@@ -163,22 +166,22 @@ The services will be available at:
 | Health check | <http://localhost:8000/healthz> |
 | PostgreSQL | `localhost:5432` |
 
-### Create the first superadmin
+### Create the first instance admin
 
-Registration creates a company administrator in a pending state. Bootstrap one platform superadmin so registrations can be approved:
+Bootstrap one instance admin to manage accounts and companies:
 
 ```bash
-docker compose exec backend python -m app.cli create-superadmin \
+docker compose exec backend python -m app.cli create-instance-admin \
   --email admin@example.com \
   --password 'replace-with-a-secure-password'
 ```
 
 Then:
 
-1. Register a company account at <http://localhost:3000/register>.
-2. Sign in as the superadmin and open <http://localhost:3000/admin>.
-3. Approve the pending company administrator.
-4. Sign in with the approved company account.
+1. Register at <http://localhost:3000/register> (or sign in as the instance admin).
+2. Create a company; you become its owner.
+3. Invite teammates from the company's Admin → Members tab and send them the copied link.
+4. Instance administration lives at <http://localhost:3000/instance> (pending approvals in `approval` mode, suspending companies).
 
 Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to delete the local PostgreSQL, Qdrant, and upload data.
 

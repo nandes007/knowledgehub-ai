@@ -38,3 +38,28 @@ export function subscribeToken(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+const LAST_COMPANY_KEY = "kh_last_company";
+
+// Per-browser convenience only: where to land after login. Storage can throw
+// (private mode, blocked site data), and nothing breaks without it.
+export function getLastCompany(): string | null {
+  try {
+    return hasLocalStorage() ? localStorage.getItem(LAST_COMPANY_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastCompany(slug: string): void {
+  try {
+    if (hasLocalStorage()) localStorage.setItem(LAST_COMPANY_KEY, slug);
+  } catch {
+    // ignore
+  }
+}
+
+// Only same-site paths: an absolute or protocol-relative `next` would be an open redirect.
+export function safeNext(next: string | string[] | undefined): string {
+  return typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+}

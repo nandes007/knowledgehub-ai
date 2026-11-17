@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -35,6 +36,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
     hybrid_search: bool = False
+    # Who may register: "open" (anyone), "approval" (an instance admin approves each
+    # account), "closed" (invite links only).
+    signup_mode: Literal["open", "approval", "closed"] = "open"
+    # Caps for a public instance. 0 = unlimited.
+    max_documents_per_company: int = 0
+    max_messages_per_company_per_day: int = 0
+    max_companies_per_user: int = 0
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 

@@ -11,7 +11,7 @@ from app.models.user import User
 from app.services.auth import hash_password
 
 
-def create_superadmin(
+def create_instance_admin(
     email: str,
     password: str,
     display_name: str | None = None,
@@ -26,11 +26,9 @@ def create_superadmin(
         user = User(
             email=email,
             password_hash=hash_password(password),
-            display_name=display_name or "Super Admin",
-            role="superadmin",
+            display_name=display_name or "Instance Admin",
+            is_instance_admin=True,
             approval_status="approved",
-            company_id=None,
-            department_id=None,
         )
         session.add(user)
         session.commit()
@@ -63,23 +61,26 @@ def main(args: list[str] | None = None) -> Any:
     parser = argparse.ArgumentParser(description="KnowledgeHub AI CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    create_sa_parser = subparsers.add_parser("create-superadmin", help="Bootstrap a platform superadmin")
-    create_sa_parser.add_argument("--email", required=True, help="Superadmin email address")
-    create_sa_parser.add_argument("--password", required=True, help="Superadmin password")
-    create_sa_parser.add_argument("--display-name", default="Super Admin", help="Superadmin display name")
+    # create-superadmin: the command's name before instance admins replaced the superadmin role.
+    create_ia_parser = subparsers.add_parser(
+        "create-instance-admin", aliases=["create-superadmin"], help="Bootstrap an instance admin"
+    )
+    create_ia_parser.add_argument("--email", required=True, help="Instance admin email address")
+    create_ia_parser.add_argument("--password", required=True, help="Instance admin password")
+    create_ia_parser.add_argument("--display-name", default="Instance Admin", help="Instance admin display name")
 
     subparsers.add_parser("reindex", help="Re-ingest every document into the vector store")
 
     parsed = parser.parse_args(args)
 
-    if parsed.command == "create-superadmin":
+    if parsed.command in ("create-instance-admin", "create-superadmin"):
         try:
-            user = create_superadmin(
+            user = create_instance_admin(
                 email=parsed.email,
                 password=parsed.password,
                 display_name=parsed.display_name,
             )
-            print(f"Superadmin created successfully: {user.email} (id: {user.id})")
+            print(f"Instance admin created successfully: {user.email} (id: {user.id})")
         except ValueError as exc:
             sys.stderr.write(f"Error: {exc}\n")
             sys.exit(1)

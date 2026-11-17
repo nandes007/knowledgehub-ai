@@ -29,6 +29,13 @@ jwt_secret: "CHANGEME"
 aws_access_key_id: "AKIA..."
 aws_secret_access_key: "CHANGEME"
 
+# Optional: who may sign up and how much one company may use. Left out, signup
+# is "approval" and every cap is 0 (unlimited).
+# signup_mode: "closed"            # open | approval | closed
+# max_documents_per_company: 0
+# max_messages_per_company_per_day: 0
+# max_companies_per_user: 0
+
 # Qdrant API key for qdrant.yml.
 #   openssl rand -hex 32
 qdrant_api_key: "CHANGEME"

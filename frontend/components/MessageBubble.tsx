@@ -3,6 +3,7 @@
 import { Markdown } from "./Markdown";
 import { AuthImage } from "./AuthImage";
 import { fetchProtectedFile, type Source } from "@/lib/api";
+import { useCompany } from "./CompanyProvider";
 
 export type MessageAttachment = {
   filename: string;
@@ -32,8 +33,8 @@ function ThinkingDots() {
   );
 }
 
-async function openAttachment(attachment: MessageAttachment) {
-  const url = attachment.src.startsWith("blob:") ? attachment.src : await fetchProtectedFile(attachment.src);
+async function openAttachment(slug: string, attachment: MessageAttachment) {
+  const url = attachment.src.startsWith("blob:") ? attachment.src : await fetchProtectedFile(slug, attachment.src);
   const link = document.createElement("a");
   link.href = url;
   link.download = attachment.filename;
@@ -41,6 +42,7 @@ async function openAttachment(attachment: MessageAttachment) {
 }
 
 function Attachments({ attachments }: { attachments: MessageAttachment[] }) {
+  const { slug } = useCompany();
   return (
     <div className="mb-2 flex flex-wrap justify-end gap-2">
       {attachments.map((a, i) =>
@@ -55,7 +57,7 @@ function Attachments({ attachments }: { attachments: MessageAttachment[] }) {
           <button
             key={i}
             type="button"
-            onClick={() => openAttachment(a)}
+            onClick={() => openAttachment(slug, a)}
             title={`Download ${a.filename}`}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-xs text-text-primary transition-colors duration-120 hover:border-gold/50"
           >

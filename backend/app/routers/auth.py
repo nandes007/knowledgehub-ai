@@ -1,17 +1,22 @@
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import func
 from sqlmodel import select
 
+from app.config import settings
 from app.deps import CurrentUserDep, SessionDep
 from app.models.company import Company
 from app.models.department import Department
+from app.models.membership import Membership
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
     MeResponse,
+    MyCompany,
     RegisterRequest,
     RegisterResponse,
     TokenResponse,
 )
+from app.services import invites
 from app.services.auth import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -19,66 +24,77 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 def register(payload: RegisterRequest, session: SessionDep) -> RegisterResponse:
-    existing_company = session.exec(
-        select(Company).where(Company.name == payload.company_name)
-    ).first()
-    if existing_company is not None:
-        raise HTTPException(status_code=409, detail="Company name already taken")
+    """Creates an account only. A company comes afterwards: create one, or join by invite."""
+    invite = None
+    if payload.invite_token:
+        invite = invites.find_pending(session, payload.invite_token)
+        if invite is None:
+            raise HTTPException(status_code=404, detail="This invite link is invalid or has expired")
+        if not invites.is_for(invite, payload.email):
+            raise HTTPException(status_code=403, detail="This invite was sent to a different email address")
+    elif settings.signup_mode == "closed":
+        raise HTTPException(status_code=403, detail="Signup is closed. Ask a company admin for an invite link.")
 
-    existing_user = session.exec(select(User).where(User.email == payload.email)).first()
-    if existing_user is not None:
+    if session.exec(select(User).where(func.lower(User.email) == payload.email.strip().lower())).first() is not None:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    company = Company(
-        name=payload.company_name,
-        status="active",
-    )
-    session.add(company)
-    session.flush()
-
+    # An invite vouches for the account, so it skips approval.
+    pending = invite is None and settings.signup_mode == "approval"
     user = User(
-        company_id=company.id,
         email=payload.email,
         password_hash=hash_password(payload.password),
         display_name=payload.display_name,
-        role="admin",
-        approval_status="pending",
+        approval_status="pending" if pending else "approved",
     )
     session.add(user)
+    session.flush()
+
+    company_slug = None
+    if invite is not None:
+        invites.accept(session, invite, user)
+        company_slug = session.get(Company, invite.company_id).slug
     session.commit()
 
-    return RegisterResponse(message="Registration pending approval")
+    return RegisterResponse(
+        message="Registration pending approval" if pending else "Account created",
+        approval_status=user.approval_status,
+        company_slug=company_slug,
+    )
 
 
 @router.get("/me", response_model=MeResponse)
 def me(current_user: CurrentUserDep, session: SessionDep) -> MeResponse:
-    company_name = None
-    if current_user.company_id:
-        company = session.get(Company, current_user.company_id)
-        if company:
-            company_name = company.name
-
-    department_name = None
-    if current_user.department_id:
-        dept = session.get(Department, current_user.department_id)
-        if dept:
-            department_name = dept.name
-
+    rows = session.exec(
+        select(Company, Membership, Department)
+        .join(Membership, Membership.company_id == Company.id)
+        .join(Department, Department.id == Membership.department_id, isouter=True)
+        .where(Membership.user_id == current_user.id)
+        .order_by(Company.name)
+    ).all()
     return MeResponse(
+        id=current_user.id,
         email=current_user.email,
         display_name=current_user.display_name,
-        role=current_user.role,
+        is_instance_admin=current_user.is_instance_admin,
         approval_status=current_user.approval_status,
-        company_id=current_user.company_id,
-        company_name=company_name,
-        department_id=current_user.department_id,
-        department_name=department_name,
+        companies=[
+            MyCompany(
+                id=company.id,
+                name=company.name,
+                slug=company.slug,
+                status=company.status,
+                role=membership.role,
+                department_id=membership.department_id,
+                department_name=department.name if department else None,
+            )
+            for company, membership, department in rows
+        ],
     )
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
-    user = session.exec(select(User).where(User.email == payload.email)).first()
+    user = session.exec(select(User).where(func.lower(User.email) == payload.email.strip().lower())).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -86,10 +102,5 @@ def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
         raise HTTPException(status_code=403, detail="Your account is pending approval")
     if user.approval_status == "rejected":
         raise HTTPException(status_code=403, detail="Your registration has been rejected")
-
-    if user.company_id:
-        company = session.get(Company, user.company_id)
-        if company and company.status == "suspended":
-            raise HTTPException(status_code=403, detail="Your company has been suspended")
 
     return TokenResponse(access_token=create_access_token(user.id))

@@ -19,7 +19,7 @@ from app.services import storage
 from app.services.llm import TokenUsage, get_llm_provider, message_text
 from ingestion.chunk import Chunk
 from ingestion.index import VectorStore, get_vector_store
-from tests.conftest import _registered_client
+from tests.conftest import _registered_client, company_id_of
 
 
 class _RecordingLLM:
@@ -265,16 +265,17 @@ def test_conversation_delete_succeeds_when_storage_delete_fails(client, env, mon
 def _document_with_image(db_engine, user_email: str, *, department: str | None = None) -> Document:
     with Session(db_engine, expire_on_commit=False) as session:
         user = session.exec(select(User).where(User.email == user_email)).one()
+        company_id = company_id_of(db_engine)
         department_id = None
         if department:
-            dept = Department(name=department, company_id=user.company_id)
+            dept = Department(name=department, company_id=company_id)
             session.add(dept)
             session.commit()
             department_id = dept.id
         document_id = uuid.uuid4()
         document = Document(
             id=document_id,
-            company_id=user.company_id,
+            company_id=company_id,
             uploaded_by=user.id,
             filename="deploy-guide.pdf",
             content_type="application/pdf",

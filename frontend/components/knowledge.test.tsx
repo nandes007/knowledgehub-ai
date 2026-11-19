@@ -3,6 +3,12 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { FileIcon, DocumentTable } from "./DocumentTable";
 import { UploadDropzone } from "./UploadDropzone";
+import KnowledgePage from "../app/(app)/[slug]/knowledge/page";
+
+let mockIsAdmin = true;
+vi.mock("./CompanyProvider", () => ({
+  useCompany: () => ({ slug: "acme", isAdmin: mockIsAdmin, isOwner: false }),
+}));
 
 // Mock API
 vi.mock("../lib/api", () => ({
@@ -89,6 +95,19 @@ describe("Knowledge Base Components", () => {
       expect(html).toContain("bg-surface-input");
       expect(html).toContain("Whole company");
       expect(html).toContain("My department only");
+    });
+  });
+
+  describe("Knowledge page", () => {
+    it("shows the upload dropzone to admins of the current company", () => {
+      mockIsAdmin = true;
+      expect(renderToString(createElement(KnowledgePage))).toContain("Drag and drop files here");
+    });
+
+    it("hides uploading from members", () => {
+      mockIsAdmin = false;
+      expect(renderToString(createElement(KnowledgePage))).not.toContain("Drag and drop files here");
+      mockIsAdmin = true;
     });
   });
 

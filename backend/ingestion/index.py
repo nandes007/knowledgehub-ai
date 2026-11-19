@@ -67,10 +67,13 @@ def _local_client(path: str) -> QdrantClient:
 
 
 class VectorStore:
+    _company_indexed = False
+
     def __init__(self, persist_dir: str | None = None) -> None:
         """persist_dir (tests, evals) or QDRANT_PATH -> embedded Qdrant, no server;
         QDRANT_URL -> the Qdrant server."""
-        if persist_dir is None and settings.qdrant_url:
+        self._remote = persist_dir is None and bool(settings.qdrant_url)
+        if self._remote:
             self._client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
         else:
             self._client = _local_client(persist_dir or settings.qdrant_path)
@@ -82,6 +85,14 @@ class VectorStore:
                 _COLLECTION_NAME,
                 vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
             )
+        # Every query filters on company_id. Once per process, and a no-op when the index
+        # exists, so collections created before the index pick it up on the next write.
+        # Embedded Qdrant ignores payload indexes, so only the server gets one.
+        if self._remote and not VectorStore._company_indexed:
+            self._client.create_payload_index(
+                _COLLECTION_NAME, "company_id", field_schema=models.PayloadSchemaType.KEYWORD
+            )
+            VectorStore._company_indexed = True
 
     def upsert_chunks(
         self,

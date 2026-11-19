@@ -180,3 +180,70 @@ export function Toast({
   );
 }
 
+
+// Centered card page for screens outside the app chrome (login, register, invite).
+export function AuthShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative flex min-h-screen flex-1 flex-col items-center justify-center gap-6 bg-surface-primary p-4">
+      {/* Subtle radial gold glow behind the card */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: "radial-gradient(ellipse at center, rgba(212,167,69,0.06) 0%, transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
+      <div className="relative flex items-center gap-2 text-text-primary">
+        <Wordmark className="text-lg" />
+        <span className="text-lg font-semibold text-text-primary">AI</span>
+      </div>
+      <div className="relative w-full max-w-sm">{children}</div>
+    </div>
+  );
+}
+
+// Underlined tab bar used by the admin screens.
+export function Tabs<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { id: T; label: string }[];
+  active: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div role="tablist" className="flex border-b border-border">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={active === tab.id}
+          onClick={() => onChange(tab.id)}
+          className={`relative rounded-t-md px-4 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+            active === tab.id ? "font-semibold text-gold" : "text-text-secondary hover:text-text-primary"
+          }`}
+        >
+          {tab.label}
+          {active === tab.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Account approval or company status, in the same stamp style as StatusStamp.
+export function StatusBadge({ status }: { status: string }) {
+  const tone =
+    status === "active" || status === "approved"
+      ? "bg-status-ready-bg text-status-ready"
+      : status === "pending"
+        ? "bg-status-pending-bg text-status-pending"
+        : "bg-status-void-bg text-status-void";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] ${tone}`}>
+      {status}
+    </span>
+  );
+}

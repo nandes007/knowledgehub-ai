@@ -3,7 +3,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -13,16 +13,23 @@ from app import models  # noqa: F401 - registers tables on SQLModel.metadata
 from app.config import settings
 from app.logging_config import configure_logging
 from app.rate_limit import limiter
-from app.routers.auth import router as auth_router
-from app.routers.chat import router as chat_router
-from app.routers.conversations import router as conversations_router
-from app.routers.departments import router as departments_router
-from app.routers.documents import router as documents_router
-from app.routers.stats import router as stats_router
-from app.routers.superadmin import router as superadmin_router
-from app.routers.users import router as users_router
+from app.deps import get_company_context
+from app.routers import (
+    auth,
+    chat,
+    companies,
+    conversations,
+    departments,
+    documents,
+    instance,
+    invites,
+    members,
+    stats,
+)
 
 _access_logger = logging.getLogger("app.access")
+
+COMPANY_PREFIX = "/companies/{slug}"
 
 
 @asynccontextmanager
@@ -75,14 +82,20 @@ def create_app() -> FastAPI:
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    app.include_router(auth_router)
-    app.include_router(chat_router)
-    app.include_router(conversations_router)
-    app.include_router(departments_router)
-    app.include_router(documents_router)
-    app.include_router(stats_router)
-    app.include_router(superadmin_router)
-    app.include_router(users_router)
+    # Account-level: a signed-in user, no company needed.
+    app.include_router(auth.router)
+    app.include_router(companies.account_router)
+    app.include_router(invites.account_router)
+
+    # Platform: instance admins only.
+    app.include_router(instance.router)
+
+    # Everything inside a company. The membership check sits on the router, so a
+    # route added here is tenant-scoped before it does anything else.
+    for module in (companies, members, invites, departments, documents, chat, conversations, stats):
+        app.include_router(
+            module.router, prefix=COMPANY_PREFIX, dependencies=[Depends(get_company_context)]
+        )
 
     return app
 

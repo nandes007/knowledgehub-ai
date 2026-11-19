@@ -1,12 +1,14 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException
 from jose import JWTError
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models.company import Company
+from app.models.membership import Membership
 from app.models.user import User
 from app.services.auth import decode_access_token
 
@@ -38,30 +40,60 @@ def get_current_user(session: SessionDep, authorization: str | None = Header(def
     if user.approval_status != "approved":
         raise HTTPException(status_code=403, detail="Account not approved")
 
-    if user.company_id:
-        company = session.get(Company, user.company_id)
-        if company and company.status == "suspended":
-            raise HTTPException(status_code=403, detail="Your company has been suspended")
-        if company and company.status != "active":
-            raise HTTPException(status_code=403, detail="Company is not active")
-
     return user
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
-def require_role(*allowed_roles: str) -> Callable[[User], User]:
-    def _role_checker(current_user: CurrentUserDep) -> User:
-        if current_user.role not in allowed_roles:
-            raise HTTPException(
-                status_code=403,
-                detail="Insufficient permissions",
-            )
-        return current_user
-
-    return _role_checker
+def require_instance_admin(current_user: CurrentUserDep) -> User:
+    if not current_user.is_instance_admin:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return current_user
 
 
-SuperAdminDep = Annotated[User, Depends(require_role("superadmin"))]
-AdminDep = Annotated[User, Depends(require_role("superadmin", "admin"))]
+InstanceAdminDep = Annotated[User, Depends(require_instance_admin)]
+
+
+@dataclass
+class CompanyContext:
+    """The caller inside one company. Company-scoped routes get their company from
+    here and nowhere else, so none of them can skip the membership check."""
+
+    user: User
+    company: Company
+    membership: Membership
+
+    @property
+    def role(self) -> str:
+        return self.membership.role
+
+
+def get_company_context(slug: str, current_user: CurrentUserDep, session: SessionDep) -> CompanyContext:
+    row = session.exec(
+        select(Company, Membership)
+        .join(Membership, Membership.company_id == Company.id)
+        .where(Company.slug == slug, Membership.user_id == current_user.id)
+    ).first()
+    # Unknown slug and "not a member" look the same, so slugs cannot be probed.
+    # Instance admins get no pass: without a membership they are not in the company.
+    if row is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    company, membership = row
+    if company.status != "active":
+        raise HTTPException(status_code=403, detail="This company has been suspended")
+    return CompanyContext(user=current_user, company=company, membership=membership)
+
+
+def require_company_role(minimum: str) -> Callable[[CompanyContext], CompanyContext]:
+    def _checker(ctx: Annotated[CompanyContext, Depends(get_company_context)]) -> CompanyContext:
+        if not ctx.membership.at_least(minimum):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return ctx
+
+    return _checker
+
+
+MemberDep = Annotated[CompanyContext, Depends(get_company_context)]
+AdminDep = Annotated[CompanyContext, Depends(require_company_role("admin"))]
+OwnerDep = Annotated[CompanyContext, Depends(require_company_role("owner"))]

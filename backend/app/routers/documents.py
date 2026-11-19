@@ -5,14 +5,14 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.config import settings
 from app.db import get_engine
-from app.deps import AdminDep, CurrentUserDep, SessionDep
+from app.deps import AdminDep, CompanyContext, MemberDep, SessionDep
 from app.models.department import Department
 from app.models.document import Document
-from app.models.user import User
 from app.rate_limit import limiter
 from app.schemas.document import DocumentRead, DocumentSummary
 from app.services import storage
@@ -22,6 +22,7 @@ from ingestion.index import VectorStore, get_vector_store
 from ingestion.ocr import IMAGE_EXTENSIONS
 from ingestion.pipeline import delete_files, ingest_document
 
+# Mounted under /companies/{slug}.
 router = APIRouter()
 
 _SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".md", *IMAGE_EXTENSIONS}
@@ -37,14 +38,17 @@ _NATIVE_PREVIEW_TYPES = {
 }
 
 
-def _visible_documents(user: User):
-    statement = select(Document).where(Document.company_id == user.company_id)
-    if user.role in ("admin", "superadmin"):
+def _visible_documents(ctx: CompanyContext):
+    """Owners and admins see every document in the company; members see company-wide
+    documents plus their own department's."""
+    statement = select(Document).where(Document.company_id == ctx.company.id)
+    if ctx.membership.at_least("admin"):
         return statement
-    if user.department_id is not None:
+    department_id = ctx.membership.department_id
+    if department_id is not None:
         return statement.where(
             (Document.visibility == "company")
-            | ((Document.visibility == "department") & (Document.department_id == user.department_id))
+            | ((Document.visibility == "department") & (Document.department_id == department_id))
         )
     return statement.where(Document.visibility == "company")
 
@@ -55,7 +59,7 @@ async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
     session: SessionDep,
-    current_user: AdminDep,
+    ctx: AdminDep,
     file: UploadFile = File(...),
     department_id: uuid.UUID | None = Form(None),
     visibility: str = Form("company"),
@@ -63,8 +67,16 @@ async def upload_document(
     llm: LLMProvider = Depends(get_llm_provider),
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> Document:
-    if current_user.company_id is None:
-        raise HTTPException(status_code=400, detail="Admin must belong to a company")
+    if settings.max_documents_per_company:
+        count = session.exec(
+            select(func.count()).select_from(Document).where(Document.company_id == ctx.company.id)
+        ).one()
+        if count >= settings.max_documents_per_company:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Document limit reached: this instance allows {settings.max_documents_per_company} "
+                "documents per company. Delete one to upload another.",
+            )
 
     contents = await file.read()
 
@@ -86,13 +98,13 @@ async def upload_document(
 
     if department_id is not None:
         dept = session.get(Department, department_id)
-        if dept is None or dept.company_id != current_user.company_id:
+        if dept is None or dept.company_id != ctx.company.id:
             raise HTTPException(status_code=404, detail="Department not found")
 
     file_hash = hashlib.sha256(contents).hexdigest()
     existing = session.exec(
         select(Document).where(
-            Document.company_id == current_user.company_id, Document.file_hash == file_hash
+            Document.company_id == ctx.company.id, Document.file_hash == file_hash
         )
     ).first()
     if existing is not None:
@@ -106,8 +118,8 @@ async def upload_document(
 
     document = Document(
         id=document_id,
-        company_id=current_user.company_id,
-        uploaded_by=current_user.id,
+        company_id=ctx.company.id,
+        uploaded_by=ctx.user.id,
         filename=file.filename or "unnamed",
         content_type=file.content_type or "application/octet-stream",
         file_path=file_path,
@@ -132,18 +144,13 @@ async def upload_document(
 
 
 @router.get("/documents", response_model=list[DocumentSummary])
-def list_documents(session: SessionDep, current_user: CurrentUserDep) -> list[Document]:
-    if current_user.company_id is None:
-        return []
-
-    return list(session.exec(_visible_documents(current_user).order_by(Document.created_at.desc())))
+def list_documents(session: SessionDep, ctx: MemberDep) -> list[Document]:
+    return list(session.exec(_visible_documents(ctx).order_by(Document.created_at.desc())))
 
 
 @router.get("/documents/{document_id}/preview")
-def preview_document(document_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep) -> Response:
-    document = None
-    if current_user.company_id is not None:
-        document = session.exec(_visible_documents(current_user).where(Document.id == document_id)).first()
+def preview_document(document_id: uuid.UUID, session: SessionDep, ctx: MemberDep) -> Response:
+    document = session.exec(_visible_documents(ctx).where(Document.id == document_id)).first()
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -160,12 +167,10 @@ def preview_document(document_id: uuid.UUID, session: SessionDep, current_user: 
 
 @router.get("/documents/{document_id}/images/{index}")
 def document_image(
-    document_id: uuid.UUID, index: int, session: SessionDep, current_user: CurrentUserDep
+    document_id: uuid.UUID, index: int, session: SessionDep, ctx: MemberDep
 ) -> Response:
     # Visibility is checked on every fetch, so images in old answers disappear with access.
-    document = None
-    if current_user.company_id is not None:
-        document = session.exec(_visible_documents(current_user).where(Document.id == document_id)).first()
+    document = session.exec(_visible_documents(ctx).where(Document.id == document_id)).first()
     images = (document.images or []) if document else []
     if not 0 <= index < len(images):
         raise HTTPException(status_code=404, detail="Image not found")
@@ -176,14 +181,11 @@ def document_image(
 def delete_document(
     document_id: uuid.UUID,
     session: SessionDep,
-    current_user: AdminDep,
+    ctx: AdminDep,
     vector_store: VectorStore = Depends(get_vector_store),
 ) -> None:
-    if current_user.company_id is None:
-        raise HTTPException(status_code=400, detail="Admin must belong to a company")
-
     document = session.get(Document, document_id)
-    if document is None or document.company_id != current_user.company_id:
+    if document is None or document.company_id != ctx.company.id:
         raise HTTPException(status_code=404, detail="Document not found")
 
     storage.delete(document.file_path)

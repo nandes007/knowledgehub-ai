@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
+import { removeMember } from "@/lib/api";
 import { useAuth } from "./AuthProvider";
+import { useCompany } from "./CompanyProvider";
 import { useConversations } from "./ConversationsProvider";
 import { Wordmark } from "./ui";
 
@@ -104,11 +106,13 @@ export function Sidebar() {
     renameConversation,
     deleteConversation,
   } = useConversations();
-  const { isAdmin, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
+  const { company, slug, isAdmin, isOwner } = useCompany();
+  const base = `/${slug}`;
   const params = useParams<{ conversationId?: string }>();
   const pathname = usePathname();
   const router = useRouter();
-  const isChatRoute = pathname === "/" || pathname === "/chat" || (pathname?.startsWith("/chat/") ?? false);
+  const isChatRoute = pathname === base || pathname === `${base}/chat` || (pathname?.startsWith(`${base}/chat/`) ?? false);
   const activeId = isChatRoute ? (params?.conversationId ?? providerActiveId) : null;
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -144,13 +148,29 @@ export function Sidebar() {
     setIsOpen(false);
     setActiveId?.(null);
     focusChatInput?.();
-    router.push("/");
+    router.push(base);
   }
 
   function handleLogout() {
     logout();
     setIsOpen(false);
     router.replace("/login");
+  }
+
+  function handleSwitch(value: string) {
+    setIsOpen(false);
+    router.push(value);
+  }
+
+  async function handleLeave() {
+    if (!user || !window.confirm(`Leave ${company.name}? Your conversations in it will be deleted.`)) return;
+    try {
+      await removeMember(slug, user.id);
+      await refreshUser();
+      router.replace("/");
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Couldn't leave the company.");
+    }
   }
 
   function startEditing(id: string, currentTitle: string) {
@@ -179,7 +199,7 @@ export function Sidebar() {
       await deleteConversation(deletingConversation.id);
       if (activeId === deletingConversation.id) {
         setActiveId?.(null);
-        router.push("/");
+        router.push(base);
       }
       setDeletingConversation(null);
     } finally {
@@ -231,6 +251,29 @@ export function Sidebar() {
           </button>
         </div>
 
+        {/* Company switcher: a native select keeps it keyboard- and screen-reader-friendly. */}
+        {!isCollapsed && (
+          <div className="border-b border-border px-3 py-2">
+            <label htmlFor="company-switcher" className="sr-only">
+              Company
+            </label>
+            <select
+              id="company-switcher"
+              value={base}
+              onChange={(e) => handleSwitch(e.target.value)}
+              className="w-full cursor-pointer truncate rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-sm text-text-primary focus:border-gold focus:outline-none"
+            >
+              {(user?.companies ?? [company]).map((c) => (
+                <option key={c.slug} value={`/${c.slug}`}>
+                  {c.name}
+                </option>
+              ))}
+              <option value="/new">+ Create company…</option>
+              {user?.isInstanceAdmin && <option value="/instance">Instance admin</option>}
+            </select>
+          </div>
+        )}
+
         {/* Nav actions */}
         <div className="space-y-1 p-2">
           <button
@@ -247,13 +290,13 @@ export function Sidebar() {
           </button>
 
           <Link
-            href="/knowledge"
+            href={`${base}/knowledge`}
             onClick={() => {
               setIsOpen(false);
               setActiveId?.(null);
             }}
             className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
-              pathname === "/knowledge"
+              pathname === `${base}/knowledge`
                 ? "bg-gold-muted text-gold"
                 : "text-text-secondary hover:bg-border hover:text-text-primary"
             } ${isCollapsed ? "justify-center px-0" : ""}`}
@@ -266,13 +309,13 @@ export function Sidebar() {
 
           {isAdmin && (
             <Link
-              href="/admin"
+              href={`${base}/admin`}
               onClick={() => {
                 setIsOpen(false);
                 setActiveId?.(null);
               }}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay ${
-                pathname === "/admin"
+                pathname === `${base}/admin`
                   ? "bg-gold-muted text-gold"
                   : "text-text-secondary hover:bg-border hover:text-text-primary"
               } ${isCollapsed ? "justify-center px-0" : ""}`}
@@ -345,7 +388,7 @@ export function Sidebar() {
                           }`}
                         >
                           <Link
-                            href={`/chat/${conversation.id}`}
+                            href={`${base}/chat/${conversation.id}`}
                             onClick={() => {
                               setIsOpen(false);
                               setActiveId?.(conversation.id);
@@ -417,6 +460,16 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className="border-t border-border p-2">
+          {!isOwner && !isCollapsed && (
+            <button
+              type="button"
+              onClick={handleLeave}
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors duration-120 hover:bg-border hover:text-status-void"
+            >
+              <IconLogout size={16} />
+              <span>Leave company</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleLogout}

@@ -80,19 +80,21 @@ No preamble like "Based on the provided context" - just answer."""
 
 def _visibility_where(
     *,
-    company_id: str | None = None,
+    company_id: str,
     department_id: str | None = None,
     department: str | None = None,
     role: str = "member",
-) -> dict | None:
-    """Admins and superadmins see every document in their company; everyone else sees
-    company-wide docs plus their own department's docs."""
-    effective_dept = department_id or department
-    if role in ("admin", "superadmin"):
-        if company_id:
-            return {"company_id": company_id}
-        return None
+) -> dict:
+    """Always scoped to one company - there is no unfiltered path. Within it, owners
+    and admins see every document; members see company-wide docs plus their own
+    department's."""
+    if not company_id:
+        raise ValueError("Retrieval needs a company")
+    company = {"company_id": company_id}
+    if role in ("owner", "admin"):
+        return company
 
+    effective_dept = department_id or department
     conditions: list[dict] = [{"visibility": "company"}]
     if effective_dept:
         conditions.append(
@@ -104,9 +106,7 @@ def _visibility_where(
             }
         )
     vis_filter = conditions[0] if len(conditions) == 1 else {"$or": conditions}
-    if company_id:
-        return {"$and": [{"company_id": company_id}, vis_filter]}
-    return vis_filter
+    return {"$and": [company, vis_filter]}
 
 
 def _reciprocal_rank_fusion(*ranked_lists: list[dict]) -> list[dict]:
@@ -121,7 +121,7 @@ def _reciprocal_rank_fusion(*ranked_lists: list[dict]) -> list[dict]:
     return [by_id[id_] for id_ in sorted(scores, key=lambda i: scores[i], reverse=True)]
 
 
-def _retrieve(question: str, embedding: list[float], store: VectorStore, where: dict | None) -> list[dict]:
+def _retrieve(question: str, embedding: list[float], store: VectorStore, where: dict) -> list[dict]:
     # ponytail: RRF is the rerank. Skipped a cross-encoder / Cohere reranker - that's a
     # heavyweight dep (torch) or a paid API call per query for gains Task 28's evals
     # haven't shown we need yet.
@@ -137,8 +137,8 @@ def stream_answer(
     *,
     llm: LLMProvider,
     vector_store: VectorStore,
+    company_id: str,
     company_name: str = "KnowledgeHub",
-    company_id: str | None = None,
     department_id: str | None = None,
     department: str | None = None,
     role: str = "member",

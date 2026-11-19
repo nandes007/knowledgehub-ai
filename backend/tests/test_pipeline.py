@@ -11,6 +11,7 @@ from app.models.user import User
 from app.services.auth import hash_password
 from ingestion.index import VectorStore
 from ingestion.pipeline import ingest_document, ingest_file
+from tests.conftest import slug_of
 
 
 class _FakeLLM:
@@ -71,16 +72,14 @@ def _make_document(
     content: str = "# Policy\n\nEmployees get 20 days of PTO.",
     department_id: uuid.UUID | None = None,
 ) -> Document:
-    company = Company(name=f"Company {uuid.uuid4().hex[:6]}", status="active")
+    name = f"Company {uuid.uuid4().hex[:6]}"
+    company = Company(name=name, slug=slug_of(name), status="active")
     session.add(company)
     session.commit()
 
     user = User(
         email=f"admin-{uuid.uuid4().hex[:6]}@example.com",
         password_hash=hash_password("pw"),
-        role="admin",
-        approval_status="approved",
-        company_id=company.id,
     )
     session.add(user)
     session.commit()
@@ -107,7 +106,7 @@ def test_ingest_document_marks_ready_with_chunk_count_and_metadata(db_engine, tm
     with Session(db_engine, expire_on_commit=False) as session:
         dept = Department(name="Engineering", company_id=uuid.uuid4())
         # create valid company for dept
-        company = Company(name="Eng Co", status="active")
+        company = Company(name="Eng Co", slug="eng-co", status="active")
         session.add(company)
         session.commit()
         dept.company_id = company.id

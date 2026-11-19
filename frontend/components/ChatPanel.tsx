@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { sendChatMessage } from "../lib/api";
 import { addAttachments, ATTACHMENT_ACCEPT, imagesFromClipboard, isImageFile } from "../lib/attachments";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
+import { useCompany } from "./CompanyProvider";
 import { useConversations } from "./ConversationsProvider";
 import { Wordmark } from "./ui";
 
@@ -25,6 +26,7 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const { slug } = useCompany();
   const { addOrRename, setActiveId, registerFocusHandler } = useConversations();
 
   // Focus textarea on initial load and when conversation changes
@@ -112,6 +114,7 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
 
     try {
       const result = await sendChatMessage(
+        slug,
         question,
         conversationId,
         (text) => {
@@ -128,7 +131,7 @@ export function ChatPanel({ conversationId: initialConversationId, initialMessag
       addOrRename(result.conversationId, question || files[0]?.name || "New chat");
       setActiveId?.(result.conversationId);
       if (isNewConversation && typeof window !== "undefined") {
-        window.history.replaceState(null, "", `/chat/${result.conversationId}`);
+        window.history.replaceState(null, "", `/${slug}/chat/${result.conversationId}`);
       }
       setMessages((prev) =>
         prev.map((m) =>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getDocumentPreview, type DocumentPreview as Preview } from "../lib/api";
+import { useCompany } from "./CompanyProvider";
 import { Markdown } from "./Markdown";
 
 export function DocumentPreview({
@@ -13,6 +14,7 @@ export function DocumentPreview({
   filename: string;
   onClose: () => void;
 }) {
+  const { slug } = useCompany();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export function DocumentPreview({
   useEffect(() => {
     let cancelled = false;
     let url: string | undefined;
-    getDocumentPreview(documentId)
+    getDocumentPreview(slug, documentId)
       .then((result) => {
         if ("url" in result) url = result.url;
         if (cancelled) {
@@ -40,7 +42,7 @@ export function DocumentPreview({
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [documentId]);
+  }, [slug, documentId]);
 
   return (
     // Native <dialog>: Escape closes it and focus stays inside; a click on the backdrop lands on the dialog itself.

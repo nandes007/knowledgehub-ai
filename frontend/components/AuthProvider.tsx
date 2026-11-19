@@ -6,18 +6,17 @@ import { clearToken, getToken, setToken, subscribeToken } from "@/lib/auth";
 
 type AuthContextValue = {
   token: string | null;
+  // The account and its memberships. Roles live per company: see useCompany().
   user: Me | null;
-  // True if superadmin or company admin
-  isAdmin: boolean;
-  isSuperAdmin: boolean;
-  isMember: boolean;
   // False on the server and on the very first client render, so the route
   // guard doesn't redirect to /login before it's had a chance to read
   // localStorage (which only exists client-side).
   isReady: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (companyName: string, email: string, password: string, displayName: string) => Promise<RegisterResult>;
+  register: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<RegisterResult>;
   logout: () => void;
+  // Re-reads memberships after creating, joining or leaving a company.
+  refreshUser: () => Promise<Me | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -30,10 +29,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const token = useSyncExternalStore(subscribeToken, getToken, () => null);
   const isReady = useSyncExternalStore(noopSubscribe, alwaysReady, notReadyOnServer);
   const [user, setUser] = useState<Me | null>(null);
-
-  const isSuperAdmin = token !== null && user?.role === "superadmin";
-  const isAdmin = token !== null && (user?.role === "admin" || user?.role === "superadmin");
-  const isMember = token !== null && user?.role === "member";
 
   useEffect(() => {
     if (!token) {
@@ -53,14 +48,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [token]);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const profile = await getMe();
+      setUser(profile);
+      return profile;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const { accessToken } = await loginAccount(email, password);
     setToken(accessToken);
   }, []);
 
-  const register = useCallback(async (companyName: string, email: string, password: string, displayName: string) => {
-    return await registerAccount(companyName, email, password, displayName);
-  }, []);
+  const register = useCallback(
+    (email: string, password: string, displayName: string, inviteToken?: string) =>
+      registerAccount(email, password, displayName, inviteToken),
+    [],
+  );
 
   const logout = useCallback(() => {
     setUser(null);
@@ -68,19 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{
-        token,
-        user,
-        isAdmin,
-        isSuperAdmin,
-        isMember,
-        isReady,
-        login,
-        register,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ token, user, isReady, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

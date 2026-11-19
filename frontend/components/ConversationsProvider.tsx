@@ -8,6 +8,7 @@ import {
   renameConversation as apiRenameConversation,
   type Conversation,
 } from "@/lib/api";
+import { useCompany } from "./CompanyProvider";
 
 const TITLE_MAX_LENGTH = 48;
 
@@ -32,6 +33,7 @@ type ConversationsContextValue = {
 const ConversationsContext = createContext<ConversationsContextValue | null>(null);
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
+  const { slug } = useCompany();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,20 +51,20 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     setIsLoading(true);
-    listConversations()
+    listConversations(slug)
       .then((list) => {
         setConversations(applyOverrides(list));
         setLoadError(null);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load conversations."))
       .finally(() => setIsLoading(false));
-  }, [applyOverrides]);
+  }, [applyOverrides, slug]);
 
   const createAndAdd = useCallback(async () => {
-    const conversation = await createConversation();
+    const conversation = await createConversation(slug);
     setConversations((prev) => [conversation, ...prev]);
     return conversation;
-  }, []);
+  }, [slug]);
 
   const addOrRename = useCallback((id: string, firstMessage: string) => {
     const overrides = titleOverridesRef.current;
@@ -81,8 +83,8 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     if (!trimmed) return;
     titleOverridesRef.current.set(id, trimmed);
     setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)));
-    await apiRenameConversation(id, trimmed);
-  }, []);
+    await apiRenameConversation(slug, id, trimmed);
+  }, [slug]);
 
   const remove = useCallback(async (id: string) => {
     titleOverridesRef.current.delete(id);
@@ -90,8 +92,8 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     if (activeId === id) {
       setActiveId(null);
     }
-    await apiDeleteConversation(id);
-  }, [activeId]);
+    await apiDeleteConversation(slug, id);
+  }, [activeId, slug]);
 
   const registerFocusHandler = useCallback((handler: () => void) => {
     focusHandlerRef.current = handler;

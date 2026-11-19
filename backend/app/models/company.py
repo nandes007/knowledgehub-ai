@@ -15,6 +15,8 @@ class Company(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str = Field(unique=True, index=True, nullable=False)
+    # URL identifier; fixed at creation so links survive a rename.
+    slug: str = Field(unique=True, index=True, nullable=False)
     status: str = Field(default="active", nullable=False)
     created_at: datetime = utc_timestamp_field()
     updated_at: datetime = utc_timestamp_field()

@@ -1,15 +1,19 @@
+import pytest
 from sqlalchemy import DateTime
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 from sqlalchemy.pool import StaticPool
 
-from app.models import Company, Conversation, Department, Document, Message, User
+from app.models import Company, Conversation, Department, Document, Membership, Message, User
 
 
-def test_all_six_tables_are_registered():
+def test_all_tables_are_registered():
     assert set(SQLModel.metadata.tables.keys()) == {
         "companies",
         "departments",
         "users",
+        "memberships",
+        "invites",
         "conversations",
         "messages",
         "documents",
@@ -33,11 +37,34 @@ def test_departments_constraints_and_indexes():
 
 def test_users_constraints_and_indexes():
     table = SQLModel.metadata.tables["users"]
-    index_names = {ix.name for ix in table.indexes}
     constraint_names = {c.name for c in table.constraints}
-    assert "ck_users_role" in constraint_names
     assert "ck_users_approval_status" in constraint_names
-    assert "idx_users_company" in index_names
+    # Company, role and department live on the membership, not the user.
+    assert not {"company_id", "department_id", "role"} & set(table.columns.keys())
+
+
+def test_memberships_constraints_and_indexes():
+    table = SQLModel.metadata.tables["memberships"]
+    constraint_names = {c.name for c in table.constraints}
+    assert "ck_memberships_role" in constraint_names
+    assert "uq_memberships_user_company" in constraint_names
+    owner_index = next(ix for ix in table.indexes if ix.name == "uq_memberships_company_owner")
+    assert owner_index.unique
+
+
+def test_a_company_cannot_have_two_owners():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(name="Solo", slug="solo")
+        users = [User(email=f"{n}@solo.com", password_hash="x") for n in ("a", "b")]
+        session.add_all([company, *users])
+        session.commit()
+        session.add(Membership(user_id=users[0].id, company_id=company.id, role="owner"))
+        session.commit()
+        session.add(Membership(user_id=users[1].id, company_id=company.id, role="owner"))
+        with pytest.raises(IntegrityError):
+            session.commit()
 
 
 def test_conversations_index_matches_ddl():
@@ -85,7 +112,7 @@ def test_round_trip_model_insertion_and_retrieval():
 
     with Session(engine) as session:
         # 1. Create Company
-        company = Company(name="Nandes Tech", status="active")
+        company = Company(name="Nandes Tech", slug="nandes-tech", status="active")
         session.add(company)
         session.commit()
         session.refresh(company)
@@ -98,17 +125,18 @@ def test_round_trip_model_insertion_and_retrieval():
 
         # 3. Create User
         user = User(
-            company_id=company.id,
-            department_id=dept.id,
             email="admin@nandes.tech",
             password_hash="hashed_pw",
             display_name="Nandes Admin",
-            role="admin",
-            approval_status="approved",
         )
         session.add(user)
         session.commit()
         session.refresh(user)
+
+        membership = Membership(user_id=user.id, company_id=company.id, department_id=dept.id, role="admin")
+        session.add(membership)
+        session.commit()
+        session.refresh(membership)
 
         # 4. Create Document
         doc = Document(
@@ -155,10 +183,13 @@ def test_round_trip_model_insertion_and_retrieval():
 
         loaded_user = session.exec(select(User).where(User.id == user.id)).first()
         assert loaded_user is not None
-        assert loaded_user.company_id == company.id
-        assert loaded_user.department_id == dept.id
-        assert loaded_user.role == "admin"
         assert loaded_user.approval_status == "approved"
+        assert loaded_user.is_instance_admin is False
+
+        loaded_membership = session.exec(select(Membership).where(Membership.user_id == user.id)).one()
+        assert loaded_membership.company_id == company.id
+        assert loaded_membership.department_id == dept.id
+        assert loaded_membership.role == "admin"
 
         loaded_doc = session.exec(select(Document).where(Document.id == doc.id)).first()
         assert loaded_doc is not None

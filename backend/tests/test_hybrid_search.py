@@ -21,6 +21,7 @@ def _seeded_store(tmp_path) -> VectorStore:
     store.upsert_chunks(
         document_id="doc-handbook",
         user_id="u1",
+        company_id="comp-1",
         filename="handbook.md",
         chunks=[Chunk(text="Employees may request time off from their manager.", index=0, h1=None, h2=None)],
         embeddings=[[1.0, 0.0]],
@@ -28,6 +29,7 @@ def _seeded_store(tmp_path) -> VectorStore:
     store.upsert_chunks(
         document_id="doc-tickets",
         user_id="u1",
+        company_id="comp-1",
         filename="tickets.md",
         chunks=[Chunk(text="Ticket ABC-9931 covers laptop replacement.", index=0, h1=None, h2=None)],
         embeddings=[[0.0, 1.0]],
@@ -38,7 +40,7 @@ def _seeded_store(tmp_path) -> VectorStore:
 def test_hybrid_ranks_exact_keyword_match_first(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "hybrid_search", True)
 
-    _, sources, _ = stream_answer("What is ABC-9931?", llm=_TopicalLLM(), vector_store=_seeded_store(tmp_path))
+    _, sources, _ = stream_answer("What is ABC-9931?", company_id="comp-1", llm=_TopicalLLM(), vector_store=_seeded_store(tmp_path))
 
     assert sources[0]["filename"] == "tickets.md"
 
@@ -46,7 +48,7 @@ def test_hybrid_ranks_exact_keyword_match_first(tmp_path, monkeypatch):
 def test_dense_only_when_flag_is_off(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "hybrid_search", False)
 
-    _, sources, _ = stream_answer("What is ABC-9931?", llm=_TopicalLLM(), vector_store=_seeded_store(tmp_path))
+    _, sources, _ = stream_answer("What is ABC-9931?", company_id="comp-1", llm=_TopicalLLM(), vector_store=_seeded_store(tmp_path))
 
     assert sources[0]["filename"] == "handbook.md"
 
@@ -57,6 +59,7 @@ def test_hybrid_still_respects_visibility_filter(tmp_path, monkeypatch):
     store.upsert_chunks(
         document_id="doc-finance",
         user_id="u1",
+        company_id="comp-1",
         filename="finance.md",
         chunks=[Chunk(text="Ticket ABC-9931 refund was approved.", index=0, h1=None, h2=None)],
         embeddings=[[0.0, 1.0]],
@@ -65,7 +68,7 @@ def test_hybrid_still_respects_visibility_filter(tmp_path, monkeypatch):
     )
 
     _, sources, _ = stream_answer(
-        "What is ABC-9931?",
+        "What is ABC-9931?", company_id="comp-1",
         llm=_TopicalLLM(),
         vector_store=store,
         department="engineering",

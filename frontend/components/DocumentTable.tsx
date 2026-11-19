@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { deleteDocument, listDocuments, type Document } from "../lib/api";
 import { StatusPill, Card, Input, ProgressBar } from "./ui";
+import { useCompany } from "./CompanyProvider";
 import { DocumentPreview } from "./DocumentPreview";
 
 const POLL_INTERVAL_MS = 4000;
@@ -68,6 +69,7 @@ function IconTrash() {
 }
 
 export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
+  const { slug, isAdmin } = useCompany();
   const [documents, setDocuments] = useState<Document[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -76,13 +78,13 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   const refetch = useCallback(() => {
-    listDocuments()
+    listDocuments(slug)
       .then((docs) => {
         setDocuments(docs);
         setLoadError(null);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load documents."));
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     refetch();
@@ -99,7 +101,7 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
     setDeletingId(id);
     setDeleteError(null);
     try {
-      await deleteDocument(id);
+      await deleteDocument(slug, id);
       setDocuments((prev) => prev?.filter((doc) => doc.id !== id) ?? null);
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Couldn't delete document.");
@@ -188,6 +190,7 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
                   <p className="mt-1 text-xs text-status-void">{doc.errorMessage}</p>
                 )}
               </div>
+              {isAdmin && (
               <button
                 type="button"
                 onClick={() => handleDelete(doc.id, doc.filename)}
@@ -202,6 +205,7 @@ export function DocumentTable({ refreshSignal }: { refreshSignal: number }) {
                   <IconTrash />
                 )}
               </button>
+              )}
             </Card>
           ))
         )}

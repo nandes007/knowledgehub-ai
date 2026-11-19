@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { attachmentPath, getConversationMessages } from "@/lib/api";
 import type { ChatMessage } from "@/components/MessageBubble";
+import { useCompany } from "@/components/CompanyProvider";
 import { useConversations } from "@/components/ConversationsProvider";
 
 export default function ChatConversationPage({
@@ -19,10 +20,11 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
   const [initialMessages, setInitialMessages] = useState<ChatMessage[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { addOrRename, setActiveId } = useConversations();
+  const { slug } = useCompany();
 
   useEffect(() => {
     setActiveId?.(conversationId);
-    getConversationMessages(conversationId)
+    getConversationMessages(slug, conversationId)
       .then((messages) => {
         setInitialMessages(
           messages.map(({ id, role, content, sources, attachments }) => ({
@@ -39,7 +41,7 @@ function ConversationLoader({ conversationId }: { conversationId: string }) {
         }
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Couldn't load this conversation."));
-  }, [conversationId, addOrRename, setActiveId]);
+  }, [slug, conversationId, addOrRename, setActiveId]);
 
   if (loadError) {
     return <div className="flex flex-1 items-center justify-center text-sm text-status-void">{loadError}</div>;
